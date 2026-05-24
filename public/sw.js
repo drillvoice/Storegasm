@@ -1,8 +1,8 @@
 'use strict';
 
-// Bump this string whenever you ship a new deployment.
-// The old cache is deleted during activate, forcing clients to re-fetch assets.
-const CACHE_VERSION = 'v1';
+// Managed automatically — run `npm version patch|minor|major` to bump.
+// sync-version.js updates this to match package.json before each release commit.
+const CACHE_VERSION = 'v0.5.0';
 const CACHE_NAME = `storegasm-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 

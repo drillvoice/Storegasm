@@ -51,6 +51,14 @@ export default async function AppLayout({
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <AppShell>{children}</AppShell>
       </main>
+
+      <footer className="border-t border-border py-3">
+        <div className="mx-auto max-w-5xl px-4 text-right">
+          <span className="text-xs text-muted-foreground/50 select-none">
+            v{process.env.NEXT_PUBLIC_APP_VERSION}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

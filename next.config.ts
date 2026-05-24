@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
+import pkg from "./package.json";
 
 const nextConfig: NextConfig = {
+  // Embed the package.json version at build time so the running app always
+  // knows exactly which code it is serving.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+  },
   // Strict mode catches subtle React bugs early.
   reactStrictMode: true,
 
