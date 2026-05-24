@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems } from "@/hooks/useItems";
-import { SpaceTree } from "@/components/spaces/SpaceTree";
+import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
@@ -112,7 +112,7 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      <SpaceTree
+      <SpaceTreemap
         spaces={spaces}
         onAddRoot={openAddRoot}
         onAddChild={openAddChild}
