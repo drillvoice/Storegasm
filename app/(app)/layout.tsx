@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
+import { AppShell } from "@/components/AppShell";
 import { Search, LogOut } from "lucide-react";
 
 /**
@@ -48,7 +49,7 @@ export default async function AppLayout({
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
-        {children}
+        <AppShell>{children}</AppShell>
       </main>
     </div>
   );
