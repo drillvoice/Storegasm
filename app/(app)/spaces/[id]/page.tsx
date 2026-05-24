@@ -5,8 +5,8 @@ import Link from "next/link";
 import { Plus, ChevronRight, Home } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems } from "@/hooks/useItems";
-import { SpaceCard } from "@/components/spaces/SpaceCard";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
+import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,12 @@ export default function SpacePage({
   function openAddChild() {
     setEditingSpace(null);
     setDefaultParentId(id);
+    setSpaceFormOpen(true);
+  }
+
+  function openAddNestedChild(parentId: string) {
+    setEditingSpace(null);
+    setDefaultParentId(parentId);
     setSpaceFormOpen(true);
   }
 
@@ -165,17 +171,14 @@ export default function SpacePage({
       </div>
 
       {/* Child spaces */}
-      {currentNode && currentNode.children.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Sub-spaces
-          </h2>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {currentNode.children.map((child) => (
-              <SpaceCard key={child.id} space={child} />
-            ))}
-          </div>
-        </section>
+      {currentNode && (
+        <SpaceTreemap
+          spaces={currentNode.children}
+          onAddRoot={openAddChild}
+          onAddChild={openAddNestedChild}
+          onEdit={openEditSpace}
+          onDelete={handleDeleteSpace}
+        />
       )}
 
       {/* Items */}
