@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   fetchItemsBySpace,
@@ -29,17 +29,25 @@ export function useItems(spaceId: string | null) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
 
   const supabase = createClient();
 
-  const refresh = useCallback(async () => {
+  async function getUserId(): Promise<string | null> {
+    if (userIdRef.current) return userIdRef.current;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    userIdRef.current = user?.id ?? null;
+    return userIdRef.current;
+  }
+
+  const refresh = useCallback(async () => {
+    const userId = await getUserId();
+    if (!userId) return;
 
     const result =
       spaceId === null
-        ? await fetchUnassignedItems(supabase, user.id)
-        : await fetchItemsBySpace(supabase, user.id, spaceId);
+        ? await fetchUnassignedItems(supabase, userId)
+        : await fetchItemsBySpace(supabase, userId, spaceId);
 
     if (result.error) {
       setError(result.error.message);
@@ -47,61 +55,72 @@ export function useItems(spaceId: string | null) {
       setItems(result.data);
       setError(null);
     }
-  }, [supabase, spaceId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceId]);
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
-  /**
-   * Creates a new item and refreshes the list.
-   *
-   * @param payload - Item creation payload.
-   * @returns The error message if creation failed, otherwise null.
-   */
   async function addItem(payload: CreateItemPayload): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return "Not authenticated";
+    const userId = await getUserId();
+    if (!userId) return "Not authenticated";
 
-    const result = await createItem(supabase, user.id, payload);
-    if (result.error) return result.error.message;
-    await refresh();
+    const now = new Date().toISOString();
+    const tempId = `opt-${Date.now()}`;
+    const optimistic: Item = {
+      id: tempId,
+      user_id: userId,
+      name: payload.name,
+      description: payload.description ?? null,
+      space_id: payload.space_id ?? spaceId,
+      tags: payload.tags ?? [],
+      created_at: now,
+      updated_at: now,
+    };
+    setItems((prev) => [...prev, optimistic]);
+
+    const result = await createItem(supabase, userId, payload);
+    if (result.error) {
+      setItems((prev) => prev.filter((i) => i.id !== tempId));
+      return result.error.message;
+    }
+    setItems((prev) => prev.map((i) => (i.id === tempId ? result.data : i)));
     return null;
   }
 
-  /**
-   * Updates an existing item and refreshes the list.
-   *
-   * @param itemId - UUID of the item to update.
-   * @param payload - Fields to patch.
-   * @returns The error message if the update failed, otherwise null.
-   */
   async function editItem(
     itemId: string,
     payload: UpdateItemPayload
   ): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return "Not authenticated";
+    const userId = await getUserId();
+    if (!userId) return "Not authenticated";
 
-    const result = await updateItem(supabase, user.id, itemId, payload);
-    if (result.error) return result.error.message;
-    await refresh();
+    const snapshot = items;
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, ...payload } : i))
+    );
+
+    const result = await updateItem(supabase, userId, itemId, payload);
+    if (result.error) {
+      setItems(snapshot);
+      return result.error.message;
+    }
     return null;
   }
 
-  /**
-   * Deletes an item and refreshes the list.
-   *
-   * @param itemId - UUID of the item to delete.
-   * @returns The error message if deletion failed, otherwise null.
-   */
   async function removeItem(itemId: string): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return "Not authenticated";
+    const userId = await getUserId();
+    if (!userId) return "Not authenticated";
 
-    const result = await deleteItem(supabase, user.id, itemId);
-    if (result.error) return result.error.message;
-    await refresh();
+    const snapshot = items;
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+
+    const result = await deleteItem(supabase, userId, itemId);
+    if (result.error) {
+      setItems(snapshot);
+      return result.error.message;
+    }
     return null;
   }
 
