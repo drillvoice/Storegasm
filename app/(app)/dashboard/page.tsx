@@ -152,7 +152,7 @@ export default function DashboardPage() {
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Unassigned items</h2>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {unassigned.map((item) => (
                 <ItemCard
                   key={item.id}

@@ -223,7 +223,7 @@ export default function SpacePage({
             No items in this space yet.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1">
             {items.map((item) => (
               <ItemCard
                 key={item.id}

@@ -125,7 +125,7 @@ export default function SearchPage() {
       )}
 
       {results.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {results.map((item) => (
             <ItemCard
               key={item.id}

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.2] - 2026-05-25
+
+### Changed
+- Item cards are now more compact: reduced padding (`px-3 py-2`), smaller icon, description truncated to a single line, tighter tag margin. Gap between cards reduced from `space-y-2` to `space-y-1`. Applies across the space detail, dashboard, and search pages.
+
+---
+
 ## [0.7.1] - 2026-05-25
 
 ### Changed
