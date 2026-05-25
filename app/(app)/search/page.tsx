@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
-import { useItemSearch } from "@/hooks/useItems";
+import { useItemSearch, useAllTags } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
@@ -23,6 +23,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState("");
   const { results: searchResults, loading, error } = useItemSearch(query);
   const { spaces } = useSpaces();
+  const { tags: allTags } = useAllTags();
 
   // Local mirror of search results — updated optimistically on edit/delete
   // so the list reflects mutations without waiting for the debounced re-fetch.
@@ -151,6 +152,7 @@ export default function SearchPage() {
         onOpenChange={setItemFormOpen}
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
+        existingTags={allTags}
         onSubmit={handleItemSubmit}
       />
 

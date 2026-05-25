@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { Plus } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
-import { useItems } from "@/hooks/useItems";
+import { useItems, useAllTags } from "@/hooks/useItems";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { ItemCard } from "@/components/items/ItemCard";
@@ -23,6 +23,7 @@ import type { SpaceNode, Item } from "@/lib/types";
 export default function DashboardPage() {
   const { spaces, loading, addSpace, editSpace, removeSpace } = useSpaces();
   const { items: unassigned, addItem, editItem, removeItem } = useItems(null);
+  const { tags: allTags } = useAllTags();
 
   // Space form state
   const [spaceFormOpen, setSpaceFormOpen] = useState(false);
@@ -188,6 +189,7 @@ export default function DashboardPage() {
         onOpenChange={setItemFormOpen}
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
+        existingTags={allTags}
         onSubmit={handleItemSubmit}
       />
 

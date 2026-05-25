@@ -171,6 +171,28 @@ export async function updateItem(
 }
 
 /**
+ * Fetches all distinct tags used across a user's items, sorted alphabetically.
+ *
+ * @param client - An authenticated Supabase client.
+ * @param userId - The authenticated user's ID.
+ * @returns A sorted array of unique tag strings.
+ */
+export async function fetchAllTags(
+  client: SupabaseClient,
+  userId: string
+): Promise<DbResult<string[]>> {
+  const { data, error } = await client
+    .from("items")
+    .select("tags")
+    .eq("user_id", userId);
+
+  if (error) return { data: null, error };
+  const all = (data ?? []).flatMap((row) => row.tags ?? []);
+  const unique = [...new Set(all)].sort();
+  return { data: unique, error: null };
+}
+
+/**
  * Deletes an item owned by the user.
  *
  * @param client - An authenticated Supabase client.

@@ -4,7 +4,7 @@ import { useState, use, useRef } from "react";
 import Link from "next/link";
 import { Plus, ChevronRight, Home } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
-import { useItems } from "@/hooks/useItems";
+import { useItems, useAllTags } from "@/hooks/useItems";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
@@ -28,6 +28,7 @@ export default function SpacePage({
 
   const { spaces, addSpace, editSpace, removeSpace } = useSpaces();
   const { items, addItem, editItem, removeItem } = useItems(id);
+  const { tags: allTags } = useAllTags();
 
   // Derive the current space and its breadcrumb from the flat tree.
   function findNode(nodes: SpaceNode[], targetId: string): SpaceNode | null {
@@ -254,6 +255,7 @@ export default function SpacePage({
         initialValues={editingItem ?? undefined}
         defaultSpaceId={id}
         allSpaces={spaces}
+        existingTags={allTags}
         onSubmit={handleItemSubmit}
       />
 

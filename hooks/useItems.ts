@@ -9,6 +9,7 @@ import {
   updateItem,
   deleteItem,
   searchItems,
+  fetchAllTags,
 } from "@/lib/db/items";
 import type {
   Item,
@@ -123,6 +124,31 @@ export function useItems(spaceId: string | null) {
   }
 
   return { items, loading, error, refresh, addItem, editItem, removeItem };
+}
+
+/**
+ * Hook that returns all distinct tags used across the user's items.
+ *
+ * Fetches once on mount; returns a sorted, deduplicated list.
+ *
+ * @returns All existing tags, loading state, and error.
+ */
+export function useAllTags() {
+  const [tags, setTags] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+      const result = await fetchAllTags(supabase, user.id);
+      if (result.data) setTags(result.data);
+      setLoading(false);
+    })();
+  }, [supabase]);
+
+  return { tags, loading };
 }
 
 /**

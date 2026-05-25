@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
-import { flattenSpaces } from "@/lib/utils";
+import { cn, flattenSpaces } from "@/lib/utils";
 import type { Item, SpaceNode } from "@/lib/types";
 
 interface ItemFormProps {
@@ -33,6 +33,8 @@ interface ItemFormProps {
   defaultSpaceId?: string | null;
   /** All spaces for the assignment dropdown. */
   allSpaces: SpaceNode[];
+  /** All existing tags across the user's items, used for autocomplete suggestions. */
+  existingTags?: string[];
   onSubmit: (values: {
     name: string;
     description: string | null;
@@ -60,6 +62,7 @@ export function ItemForm({
   initialValues,
   defaultSpaceId,
   allSpaces,
+  existingTags,
   onSubmit,
 }: ItemFormProps) {
   const [name, setName] = useState("");
@@ -67,8 +70,17 @@ export function ItemForm({
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [suggestionIndex, setSuggestionIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const suggestions = useMemo(() => {
+    const trimmed = tagInput.trim().toLowerCase();
+    if (!trimmed || !existingTags) return [];
+    return existingTags.filter(
+      (t) => t.includes(trimmed) && !tags.includes(t)
+    );
+  }, [tagInput, existingTags, tags]);
 
   const isEditing = !!initialValues?.id;
 
@@ -79,18 +91,42 @@ export function ItemForm({
       setSpaceId(initialValues?.space_id ?? defaultSpaceId ?? null);
       setTags(initialValues?.tags ?? []);
       setTagInput("");
+      setSuggestionIndex(-1);
       setError(null);
     }
   }, [open, initialValues, defaultSpaceId]);
 
+  function selectSuggestion(tag: string) {
+    if (!tags.includes(tag)) {
+      setTags((prev) => [...prev, tag]);
+    }
+    setTagInput("");
+    setSuggestionIndex(-1);
+  }
+
   function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      const trimmed = tagInput.trim().toLowerCase();
-      if (trimmed && !tags.includes(trimmed)) {
-        setTags((prev) => [...prev, trimmed]);
-      }
+      setSuggestionIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSuggestionIndex((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setSuggestionIndex(-1);
       setTagInput("");
+    } else if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      if (suggestionIndex >= 0 && suggestions[suggestionIndex]) {
+        selectSuggestion(suggestions[suggestionIndex]);
+      } else {
+        const trimmed = tagInput.trim().toLowerCase();
+        if (trimmed && !tags.includes(trimmed)) {
+          setTags((prev) => [...prev, trimmed]);
+        }
+        setTagInput("");
+        setSuggestionIndex(-1);
+      }
     }
   }
 
@@ -174,28 +210,57 @@ export function ItemForm({
 
           <div className="space-y-2">
             <Label htmlFor="item-tags">Tags</Label>
-            <div className="flex flex-wrap gap-1 rounded-md border border-input bg-background px-3 py-2 min-h-[40px]">
-              {tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="gap-1 text-xs">
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    aria-label={`Remove tag ${tag}`}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </Badge>
-              ))}
-              <input
-                id="item-tags"
-                className="flex-1 min-w-[80px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder={tags.length === 0 ? "Type and press Enter" : ""}
-                aria-label="Add tag"
-              />
+            <div className="relative">
+              <div className="flex flex-wrap gap-1 rounded-md border border-input bg-background px-3 py-2 min-h-[40px]">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="gap-1 text-xs">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      aria-label={`Remove tag ${tag}`}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </Badge>
+                ))}
+                <input
+                  id="item-tags"
+                  className="flex-1 min-w-[80px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setSuggestionIndex(-1);
+                  }}
+                  onKeyDown={handleTagKeyDown}
+                  placeholder={tags.length === 0 ? "Type and press Enter" : ""}
+                  aria-label="Add tag"
+                  autoComplete="off"
+                />
+              </div>
+              {suggestions.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-input bg-popover py-1 shadow-md">
+                  {suggestions.map((tag, i) => (
+                    <li key={tag}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "w-full px-3 py-1.5 text-left text-sm",
+                          i === suggestionIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-accent hover:text-accent-foreground"
+                        )}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectSuggestion(tag);
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 
