@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-05-25
+
+### Added
+- Tag autocomplete suggestions in the item add/edit form. As the user types a tag, existing tags that match (substring match) are shown in a dropdown beneath the input. Arrow keys navigate the list; Enter or click selects a suggestion; Escape dismisses it.
+
+---
+
 ## [0.7.3] - 2026-05-25
 
 ### Changed
