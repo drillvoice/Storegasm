@@ -53,6 +53,26 @@ function pruneNode(tree: SpaceNode[], id: string): SpaceNode[] {
     });
 }
 
+// Applies a patch to a node AND moves it to its new parent if parent_id changed.
+// Replaces patchNode for edits so reparenting is reflected immediately.
+function relocateNode(
+  tree: SpaceNode[],
+  id: string,
+  patch: Partial<SpaceNode>
+): SpaceNode[] {
+  let target: SpaceNode | null = null;
+  const search = (nodes: SpaceNode[]) => {
+    for (const n of nodes) {
+      if (n.id === id) { target = n; return; }
+      search(n.children);
+    }
+  };
+  search(tree);
+  if (!target) return tree;
+  const patched: SpaceNode = { ...(target as SpaceNode), ...patch };
+  return insertNode(pruneNode(tree, id), patched);
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -137,7 +157,7 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return "Not authenticated";
 
     const snapshot = spaces;
-    setSpaces((prev) => patchNode(prev, spaceId, payload));
+    setSpaces((prev) => relocateNode(prev, spaceId, payload));
 
     const result = await updateSpace(supabase, userId, spaceId, payload);
     if (result.error) {
