@@ -9,6 +9,7 @@ import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
+import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -64,6 +65,10 @@ export default function SpacePage({
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  // Move dialog state
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [movingItem, setMovingItem] = useState<Item | null>(null);
+
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState("");
@@ -117,6 +122,15 @@ export default function SpacePage({
   function openEditItem(item: Item) {
     setEditingItem(item);
     setItemFormOpen(true);
+  }
+
+  function openMoveItem(item: Item) {
+    setMovingItem(item);
+    setMoveDialogOpen(true);
+  }
+
+  async function handleMoveItem(itemId: string, spaceId: string | null) {
+    return editItem(itemId, { space_id: spaceId });
   }
 
   function handleDeleteItem(item: Item) {
@@ -215,6 +229,7 @@ export default function SpacePage({
                 key={item.id}
                 item={item}
                 onEdit={openEditItem}
+                onMove={openMoveItem}
                 onDelete={handleDeleteItem}
               />
             ))}
@@ -240,6 +255,14 @@ export default function SpacePage({
         defaultSpaceId={id}
         allSpaces={spaces}
         onSubmit={handleItemSubmit}
+      />
+
+      <MoveItemDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        item={movingItem}
+        allSpaces={spaces}
+        onMove={handleMoveItem}
       />
 
       <ConfirmDialog

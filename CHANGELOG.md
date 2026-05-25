@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-05-25
+
+### Added
+- Item edit, delete, and move actions are now accessible on mobile via a three-dot menu (⋮) on every item card, replacing the desktop-only hover buttons.
+- New "Move to…" action on items opens a dedicated dialog with a space picker — move an item to any space or leave it unassigned without touching other fields.
+
+### Changed
+- `ItemCard` action buttons removed from hover-only state; all actions are now reachable on touch devices.
+
+---
+
 ## [0.6.2] - 2026-05-25
 
 ### Fixed

@@ -8,6 +8,7 @@ import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
+import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -31,6 +32,10 @@ export default function DashboardPage() {
   // Item form state
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+
+  // Move dialog state
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [movingItem, setMovingItem] = useState<Item | null>(null);
 
   // Confirm dialog state — one dialog handles both space and item deletes
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -89,6 +94,15 @@ export default function DashboardPage() {
     setItemFormOpen(true);
   }
 
+  function openMoveItem(item: Item) {
+    setMovingItem(item);
+    setMoveDialogOpen(true);
+  }
+
+  async function handleMoveItem(itemId: string, spaceId: string | null) {
+    return editItem(itemId, { space_id: spaceId });
+  }
+
   function handleDeleteItem(item: Item) {
     askConfirm(`Delete "${item.name}"?`, () => removeItem(item.id));
   }
@@ -144,6 +158,7 @@ export default function DashboardPage() {
                   key={item.id}
                   item={item}
                   onEdit={openEditItem}
+                  onMove={openMoveItem}
                   onDelete={handleDeleteItem}
                 />
               ))}
@@ -174,6 +189,14 @@ export default function DashboardPage() {
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
         onSubmit={handleItemSubmit}
+      />
+
+      <MoveItemDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        item={movingItem}
+        allSpaces={spaces}
+        onMove={handleMoveItem}
       />
 
       <ConfirmDialog
