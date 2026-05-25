@@ -36,6 +36,7 @@
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
+  "browserslist": "> 0.5%, last 2 years, not dead",
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",

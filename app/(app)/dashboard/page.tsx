@@ -1,18 +1,28 @@
 "use client";
 
 import { useState, useRef } from "react";
+import dynamic from "next/dynamic";
 import { Plus } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems, useAllTags } from "@/hooks/useItems";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
-import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { ItemCard } from "@/components/items/ItemCard";
-import { ItemForm } from "@/components/items/ItemForm";
-import { MoveItemDialog } from "@/components/items/MoveItemDialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { SpaceNode, Item } from "@/lib/types";
+
+const SpaceForm = dynamic(() =>
+  import("@/components/spaces/SpaceForm").then((m) => m.SpaceForm)
+);
+const ItemForm = dynamic(() =>
+  import("@/components/items/ItemForm").then((m) => m.ItemForm)
+);
+const MoveItemDialog = dynamic(() =>
+  import("@/components/items/MoveItemDialog").then((m) => m.MoveItemDialog)
+);
+const ConfirmDialog = dynamic(() =>
+  import("@/components/ui/confirm-dialog").then((m) => m.ConfirmDialog)
+);
 
 /**
  * Dashboard page — displays the full space tree and unassigned items.
@@ -120,14 +130,6 @@ export default function DashboardPage() {
     return addItem(values);
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <p className="text-muted-foreground animate-pulse">Loading…</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -138,33 +140,41 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      <SpaceTreemap
-        spaces={spaces}
-        onAddRoot={openAddRoot}
-        onAddChild={openAddChild}
-        onEdit={openEditSpace}
-        onDelete={handleDeleteSpace}
-      />
-
-      {unassigned.length > 0 && (
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <p className="text-muted-foreground animate-pulse">Loading…</p>
+        </div>
+      ) : (
         <>
-          <Separator />
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Unassigned items</h2>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {unassigned.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  onEdit={openEditItem}
-                  onMove={openMoveItem}
-                  onDelete={handleDeleteItem}
-                />
-              ))}
-            </div>
-          </section>
+          <SpaceTreemap
+            spaces={spaces}
+            onAddRoot={openAddRoot}
+            onAddChild={openAddChild}
+            onEdit={openEditSpace}
+            onDelete={handleDeleteSpace}
+          />
+
+          {unassigned.length > 0 && (
+            <>
+              <Separator />
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Unassigned items</h2>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {unassigned.map((item) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      onEdit={openEditItem}
+                      onMove={openMoveItem}
+                      onDelete={handleDeleteItem}
+                    />
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
         </>
       )}
 
