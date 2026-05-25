@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.3] - 2026-05-25
+
+### Changed
+- Item list now uses a two-column grid layout across the space detail, dashboard, and search pages.
+- Package icon removed from item cards — it was identical for every item and wasted space.
+- Card layout restructured: name wraps up to two lines with the ⋮ menu anchored to the top-right corner.
+
+---
+
 ## [0.7.2] - 2026-05-25
 
 ### Changed
