@@ -74,40 +74,6 @@ export async function fetchSpace(
 }
 
 /**
- * Returns the ordered ancestor chain for a space (breadcrumb).
- *
- * Walks up the parent chain in-memory using the full space list.
- *
- * @param client - An authenticated Supabase client.
- * @param userId - The authenticated user's ID.
- * @param spaceId - The UUID of the target space.
- * @returns An ordered array of Spaces from root to the given space.
- */
-export async function fetchSpaceBreadcrumb(
-  client: SupabaseClient,
-  userId: string,
-  spaceId: string
-): Promise<DbResult<Space[]>> {
-  const { data, error } = await client
-    .from("spaces")
-    .select("*")
-    .eq("user_id", userId);
-
-  if (error) return { data: null, error };
-
-  const map = new Map<string, Space>((data ?? []).map((s) => [s.id, s]));
-  const crumbs: Space[] = [];
-  let current: Space | undefined = map.get(spaceId);
-
-  while (current) {
-    crumbs.unshift(current);
-    current = current.parent_id ? map.get(current.parent_id) : undefined;
-  }
-
-  return { data: crumbs, error: null };
-}
-
-/**
  * Creates a new space.
  *
  * @param client - An authenticated Supabase client.
