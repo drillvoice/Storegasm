@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { flattenSpaces } from "@/lib/utils";
 import type { SpaceNode } from "@/lib/types";
 
 interface SpaceFormProps {
@@ -95,17 +96,30 @@ export function SpaceForm({
     }
   }
 
-  /** Flattens a SpaceNode tree into depth-labelled options for the select. */
-  function flattenSpaces(nodes: SpaceNode[], depth = 0): Array<{ id: string; label: string }> {
-    return nodes.flatMap((n) => [
-      { id: n.id, label: "  ".repeat(depth) + n.name },
-      ...flattenSpaces(n.children, depth + 1),
-    ]);
+  // Collect the IDs of the space being edited and all its descendants so they
+  // can be excluded from the parent selector — selecting any of them would
+  // create a cycle in the tree.
+  function collectSubtreeIds(nodes: SpaceNode[], targetId: string): Set<string> {
+    const ids = new Set<string>();
+    const collect = (node: SpaceNode) => {
+      ids.add(node.id);
+      node.children.forEach(collect);
+    };
+    const find = (nodes: SpaceNode[]) => {
+      for (const n of nodes) {
+        if (n.id === targetId) { collect(n); return; }
+        find(n.children);
+      }
+    };
+    find(nodes);
+    return ids;
   }
 
-  const flatSpaces = flattenSpaces(allSpaces).filter(
-    (s) => s.id !== initialValues?.id // can't parent to self
-  );
+  const excluded = initialValues?.id
+    ? collectSubtreeIds(allSpaces, initialValues.id)
+    : new Set<string>();
+
+  const flatSpaces = flattenSpaces(allSpaces).filter((s) => !excluded.has(s.id));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

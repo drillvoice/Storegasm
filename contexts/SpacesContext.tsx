@@ -7,6 +7,7 @@ import {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -53,6 +54,26 @@ function pruneNode(tree: SpaceNode[], id: string): SpaceNode[] {
     });
 }
 
+// Applies a patch to a node AND moves it to its new parent if parent_id changed.
+// Replaces patchNode for edits so reparenting is reflected immediately.
+function relocateNode(
+  tree: SpaceNode[],
+  id: string,
+  patch: Partial<SpaceNode>
+): SpaceNode[] {
+  let target: SpaceNode | null = null;
+  const search = (nodes: SpaceNode[]) => {
+    for (const n of nodes) {
+      if (n.id === id) { target = n; return; }
+      search(n.children);
+    }
+  };
+  search(tree);
+  if (!target) return tree;
+  const patched: SpaceNode = { ...(target as SpaceNode), ...patch };
+  return insertNode(pruneNode(tree, id), patched);
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
@@ -74,14 +95,14 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
-  async function getUserId(): Promise<string | null> {
+  const getUserId = useCallback(async (): Promise<string | null> => {
     if (userIdRef.current) return userIdRef.current;
     const { data: { user } } = await supabase.auth.getUser();
     userIdRef.current = user?.id ?? null;
     return userIdRef.current;
-  }
+  }, [supabase]);
 
   const refresh = useCallback(async () => {
     const userId = await getUserId();
@@ -93,8 +114,7 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
       setSpaces(result.data);
       setError(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [supabase, getUserId]);
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
@@ -137,7 +157,7 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return "Not authenticated";
 
     const snapshot = spaces;
-    setSpaces((prev) => patchNode(prev, spaceId, payload));
+    setSpaces((prev) => relocateNode(prev, spaceId, payload));
 
     const result = await updateSpace(supabase, userId, spaceId, payload);
     if (result.error) {

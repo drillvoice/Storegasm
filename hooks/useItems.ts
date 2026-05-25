@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   fetchItemsBySpace,
@@ -30,15 +30,14 @@ export function useItems(spaceId: string | null) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
+  const supabase = useMemo(() => createClient(), []);
 
-  const supabase = createClient();
-
-  async function getUserId(): Promise<string | null> {
+  const getUserId = useCallback(async (): Promise<string | null> => {
     if (userIdRef.current) return userIdRef.current;
     const { data: { user } } = await supabase.auth.getUser();
     userIdRef.current = user?.id ?? null;
     return userIdRef.current;
-  }
+  }, [supabase]);
 
   const refresh = useCallback(async () => {
     const userId = await getUserId();
@@ -55,8 +54,7 @@ export function useItems(spaceId: string | null) {
       setItems(result.data);
       setError(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId]);
+  }, [spaceId, supabase, getUserId]);
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
@@ -140,7 +138,7 @@ export function useItemSearch(query: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     if (!query.trim()) {

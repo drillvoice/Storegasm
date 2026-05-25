@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useRef } from "react";
 import Link from "next/link";
 import { Plus, ChevronRight, Home } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
@@ -9,6 +9,7 @@ import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { SpaceNode, Item } from "@/lib/types";
@@ -63,6 +64,17 @@ export default function SpacePage({
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  // Confirm dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const pendingAction = useRef<() => void>(() => {});
+
+  function askConfirm(title: string, action: () => void) {
+    setConfirmTitle(title);
+    pendingAction.current = action;
+    setConfirmOpen(true);
+  }
+
   function openAddChild() {
     setEditingSpace(null);
     setDefaultParentId(id);
@@ -81,10 +93,11 @@ export default function SpacePage({
     setSpaceFormOpen(true);
   }
 
-  async function handleDeleteSpace(node: SpaceNode) {
-    if (confirm(`Delete "${node.name}" and all its contents?`)) {
-      await removeSpace(node.id);
-    }
+  function handleDeleteSpace(node: SpaceNode) {
+    askConfirm(
+      `Delete "${node.name}" and all its contents?`,
+      () => removeSpace(node.id)
+    );
   }
 
   async function handleSpaceSubmit(values: {
@@ -106,10 +119,8 @@ export default function SpacePage({
     setItemFormOpen(true);
   }
 
-  async function handleDeleteItem(item: Item) {
-    if (confirm(`Delete "${item.name}"?`)) {
-      await removeItem(item.id);
-    }
+  function handleDeleteItem(item: Item) {
+    askConfirm(`Delete "${item.name}"?`, () => removeItem(item.id));
   }
 
   async function handleItemSubmit(values: {
@@ -229,6 +240,13 @@ export default function SpacePage({
         defaultSpaceId={id}
         allSpaces={spaces}
         onSubmit={handleItemSubmit}
+      />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmTitle}
+        onConfirm={() => pendingAction.current()}
       />
     </div>
   );
