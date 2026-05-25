@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { Search, LogOut } from "lucide-react";
 
 /**
@@ -59,6 +60,8 @@ export default async function AppLayout({
           </span>
         </div>
       </footer>
+
+      <InstallPrompt />
     </div>
   );
 }
