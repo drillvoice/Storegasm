@@ -138,7 +138,9 @@ export function SpaceTreemap({
         style={{ minHeight: 360 }}
         aria-label="Storage spaces"
       >
-        {tiles.map((tile) => {
+        {dims.width === 0 ? (
+          <div className="absolute inset-0 animate-pulse rounded-lg bg-muted" />
+        ) : tiles.map((tile) => {
           const w = tile.x1 - tile.x0;
           const h = tile.y1 - tile.y0;
           const showLabel = w >= 60 && h >= 36;
