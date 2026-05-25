@@ -54,15 +54,16 @@ export async function fetchUnassignedItems(
 }
 
 /**
- * Full-text searches items and their parent space name for a user.
+ * Full-text searches items and their full ancestor breadcrumb for a user.
  *
  * Uses Postgres tsvector search on the pre-computed search_vector column which
- * covers item name, description, and tags.
+ * covers item name, description, and tags. Fetches all spaces in parallel to
+ * build complete breadcrumb paths (e.g. "Bedroom › Under bed › Tub 1").
  *
  * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param query - The user's raw search query string.
- * @returns Items enriched with their parent space name, ordered by relevance.
+ * @returns Items enriched with their full ancestor breadcrumb, ordered by name.
  */
 export async function searchItems(
   client: SupabaseClient,
@@ -71,28 +72,48 @@ export async function searchItems(
 ): Promise<DbResult<ItemWithSpace[]>> {
   if (!query.trim()) return { data: [], error: null };
 
-  // Supabase textSearch uses Postgres @@ operator with to_tsquery.
-  // The search_vector column on items covers name + description + tags.
-  const { data: itemData, error } = await client
-    .from("items")
-    .select("*, spaces(id, name)")
-    .eq("user_id", userId)
-    .textSearch("search_vector", query, {
-      type: "websearch",
-      config: "english",
-    })
-    .order("name");
+  // Fetch matching items and the full space list in parallel.
+  // The space list is needed to walk the ancestor chain for breadcrumbs.
+  const [itemResult, spacesResult] = await Promise.all([
+    client
+      .from("items")
+      .select("*, spaces(id, name)")
+      .eq("user_id", userId)
+      .textSearch("search_vector", query, { type: "websearch", config: "english" })
+      .order("name"),
+    client
+      .from("spaces")
+      .select("id, name, parent_id")
+      .eq("user_id", userId),
+  ]);
 
-  if (error) return { data: null, error };
+  if (itemResult.error) return { data: null, error: itemResult.error };
+  if (spacesResult.error) return { data: null, error: spacesResult.error };
 
-  const items: ItemWithSpace[] = (itemData ?? []).map((row) => {
+  type SpaceRow = { id: string; name: string; parent_id: string | null };
+  const spaceMap = new Map<string, SpaceRow>(
+    (spacesResult.data ?? []).map((s) => [s.id, s])
+  );
+
+  function buildPath(spaceId: string | null): string | null {
+    if (!spaceId) return null;
+    const parts: string[] = [];
+    let cur: SpaceRow | undefined = spaceMap.get(spaceId);
+    while (cur) {
+      parts.unshift(cur.name);
+      cur = cur.parent_id ? spaceMap.get(cur.parent_id) : undefined;
+    }
+    return parts.length > 0 ? parts.join(" › ") : null;
+  }
+
+  const items: ItemWithSpace[] = (itemResult.data ?? []).map((row) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const space = (row as any).spaces as { id: string; name: string } | null;
     return {
       ...row,
       tags: row.tags ?? [],
       space: space ?? null,
-      space_path: space?.name ?? null,
+      space_path: buildPath(space?.id ?? null),
     };
   });
 
