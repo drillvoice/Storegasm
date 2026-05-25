@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1] - 2026-05-25
+
+### Changed
+- Empty-spaces prompt in SpaceTreemap replaced with a compact single-row inline hint instead of the tall centered block with a large icon. Includes an × to dismiss it entirely — once dismissed the section collapses so items take up the full view.
+
+---
+
 ## [0.7.0] - 2026-05-25
 
 ### Added

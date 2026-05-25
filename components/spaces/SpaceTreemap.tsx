@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, MoreVertical, Pencil, Trash2, FolderPlus, Folder } from "lucide-react";
+import { Plus, MoreVertical, Pencil, Trash2, FolderPlus, Folder, X } from "lucide-react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { Button } from "@/components/ui/button";
 import {
@@ -85,6 +85,7 @@ export function SpaceTreemap({
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ width: 0, height: 0 });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [emptyDismissed, setEmptyDismissed] = useState(false);
 
   const measure = useCallback(() => {
     if (containerRef.current) {
@@ -101,18 +102,23 @@ export function SpaceTreemap({
   }, [measure]);
 
   if (spaces.length === 0) {
+    if (emptyDismissed) return null;
     return (
-      <div className="flex flex-col items-center gap-4 py-12 text-center">
-        <Folder className="h-12 w-12 text-muted-foreground" />
-        <div>
-          <p className="font-medium">No spaces yet</p>
-          <p className="text-sm text-muted-foreground">
-            Create your first storage space to get started.
-          </p>
-        </div>
-        <Button onClick={onAddRoot} size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          Add space
+      <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        <Folder className="h-4 w-4 shrink-0" />
+        <span className="flex-1">No spaces here yet.</span>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onAddRoot}>
+          <Plus className="mr-1 h-3 w-3" />
+          Add
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label="Dismiss"
+          onClick={() => setEmptyDismissed(true)}
+        >
+          <X className="h-3.5 w-3.5" />
         </Button>
       </div>
     );
