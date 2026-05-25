@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-05-25
+
+### Fixed
+- Reparenting a space now moves it to the correct position in the tree immediately — previously the node stayed in its old subtree until a hard reload.
+- Edit and delete on search result items are now functional; an item form is shown for editing and the result list updates immediately on mutation.
+- Search result `space_path` now shows the full ancestor breadcrumb (e.g. "Bedroom › Under bed › Tub 1") instead of just the immediate parent name.
+- `SpaceForm` parent selector no longer offers the space's own descendants as valid parents, preventing circular tree cycles.
+
+---
+
 ## [0.6.0] - 2026-05-24
 
 ### Added
