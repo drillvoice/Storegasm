@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search } from "lucide-react";
 import { useItemSearch } from "@/hooks/useItems";
+import { useSpaces } from "@/hooks/useSpaces";
 import { ItemCard } from "@/components/items/ItemCard";
+import { ItemForm } from "@/components/items/ItemForm";
 import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
+import { updateItem, deleteItem } from "@/lib/db/items";
+import type { ItemWithSpace, Item } from "@/lib/types";
 
 /**
  * Search page — full-text search across all items.
@@ -14,7 +19,50 @@ import { Input } from "@/components/ui/input";
  */
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const { results, loading, error } = useItemSearch(query);
+  const { results: searchResults, loading, error } = useItemSearch(query);
+  const { spaces } = useSpaces();
+
+  // Local mirror of search results — updated optimistically on edit/delete
+  // so the list reflects mutations without waiting for the debounced re-fetch.
+  const [results, setResults] = useState<ItemWithSpace[]>([]);
+  useEffect(() => { setResults(searchResults); }, [searchResults]);
+
+  const [itemFormOpen, setItemFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+
+  function openEditItem(item: Item) {
+    setEditingItem(item);
+    setItemFormOpen(true);
+  }
+
+  async function handleDeleteItem(item: Item) {
+    if (!confirm(`Delete "${item.name}"?`)) return;
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const result = await deleteItem(supabase, user.id, item.id);
+    if (!result.error) {
+      setResults((prev) => prev.filter((r) => r.id !== item.id));
+    }
+  }
+
+  async function handleItemSubmit(values: {
+    name: string;
+    description: string | null;
+    space_id: string | null;
+    tags: string[];
+  }): Promise<string | null> {
+    if (!editingItem) return "No item selected";
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return "Not authenticated";
+    const result = await updateItem(supabase, user.id, editingItem.id, values);
+    if (result.error) return result.error.message;
+    setResults((prev) =>
+      prev.map((r) => (r.id === editingItem.id ? { ...r, ...values } : r))
+    );
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -54,8 +102,8 @@ export default function SearchPage() {
               key={item.id}
               item={item}
               spacePath={item.space_path}
-              onEdit={() => {}}
-              onDelete={() => {}}
+              onEdit={openEditItem}
+              onDelete={handleDeleteItem}
             />
           ))}
         </div>
@@ -67,6 +115,14 @@ export default function SearchPage() {
           <p>Start typing to find items across all your spaces.</p>
         </div>
       )}
+
+      <ItemForm
+        open={itemFormOpen}
+        onOpenChange={setItemFormOpen}
+        initialValues={editingItem ?? undefined}
+        allSpaces={spaces}
+        onSubmit={handleItemSubmit}
+      />
     </div>
   );
 }
