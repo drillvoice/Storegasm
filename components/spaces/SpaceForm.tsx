@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { flattenSpaces } from "@/lib/utils";
 import type { SpaceNode } from "@/lib/types";
 
 interface SpaceFormProps {
@@ -93,14 +94,6 @@ export function SpaceForm({
     } else {
       onOpenChange(false);
     }
-  }
-
-  /** Flattens a SpaceNode tree into depth-labelled options for the select. */
-  function flattenSpaces(nodes: SpaceNode[], depth = 0): Array<{ id: string; label: string }> {
-    return nodes.flatMap((n) => [
-      { id: n.id, label: "  ".repeat(depth) + n.name },
-      ...flattenSpaces(n.children, depth + 1),
-    ]);
   }
 
   // Collect the IDs of the space being edited and all its descendants so they

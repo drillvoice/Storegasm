@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
+import { flattenSpaces } from "@/lib/utils";
 import type { Item, SpaceNode } from "@/lib/types";
 
 interface ItemFormProps {
@@ -116,13 +117,6 @@ export function ItemForm({
     } else {
       onOpenChange(false);
     }
-  }
-
-  function flattenSpaces(nodes: SpaceNode[], depth = 0): Array<{ id: string; label: string }> {
-    return nodes.flatMap((n) => [
-      { id: n.id, label: "  ".repeat(depth) + n.name },
-      ...flattenSpaces(n.children, depth + 1),
-    ]);
   }
 
   const flatSpaces = flattenSpaces(allSpaces);
