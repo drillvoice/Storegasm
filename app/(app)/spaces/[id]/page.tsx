@@ -223,7 +223,7 @@ export default function SpacePage({
             No items in this space yet.
           </p>
         ) : (
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-2">
             {items.map((item) => (
               <ItemCard
                 key={item.id}
