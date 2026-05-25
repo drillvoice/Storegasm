@@ -185,6 +185,7 @@ export function ItemForm({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional notes"
               rows={1}
+              className="min-h-0 resize-none"
             />
           </div>
 
