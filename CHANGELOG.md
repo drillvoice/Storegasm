@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.1] - 2026-05-25
+
+### Changed
+- Add item / edit item dialog now opens anchored to the top of the screen instead of centred, keeping it fully visible when the mobile keyboard is open.
+- Description field reduced to a single row.
+- Cancel and submit buttons are now always displayed side-by-side on the same row.
+- Reduced padding and form spacing so all fields fit without scrolling on typical mobile viewports.
+
+---
+
 ## [0.8.0] - 2026-05-25
 
 ### Added

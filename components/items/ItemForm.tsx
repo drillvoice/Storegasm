@@ -159,12 +159,12 @@ export function ItemForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[480px] top-4 translate-y-0 p-4 data-[state=open]:slide-in-from-top-4 data-[state=closed]:slide-out-to-top-4">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit item" : "Add item"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
           <div className="space-y-2">
             <Label htmlFor="item-name">Name *</Label>
             <Input
@@ -184,7 +184,7 @@ export function ItemForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional notes"
-              rows={2}
+              rows={1}
             />
           </div>
 
@@ -270,7 +270,7 @@ export function ItemForm({
             </p>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-row justify-end space-x-2">
             <Button
               type="button"
               variant="outline"
