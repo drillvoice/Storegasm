@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-05-25
+
+### Fixed
+- Treemap now shows a pulsing skeleton on initial render instead of a blank rectangle while it measures its container width.
+
+### Changed
+- Supabase client is now created once per component mount (`useMemo`) instead of on every render, making `useEffect` dependency arrays honest and eliminating a latent infinite-loop risk in Strict Mode.
+- `flattenSpaces` extracted from `ItemForm` and `SpaceForm` into `lib/utils` — single source of truth.
+- `fetchSpaceBreadcrumb` removed from `lib/db/spaces` — it was never called by the app and fetched all spaces on every invocation.
+- Delete confirmations across all pages replaced with a styled `ConfirmDialog` (using existing Dialog primitives) instead of `window.confirm()`.
+
+---
+
 ## [0.6.1] - 2026-05-25
 
 ### Fixed
