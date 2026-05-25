@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search } from "lucide-react";
 import { useItemSearch } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { updateItem, deleteItem } from "@/lib/db/items";
@@ -30,20 +31,27 @@ export default function SearchPage() {
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const pendingAction = useRef<() => void>(() => {});
+
   function openEditItem(item: Item) {
     setEditingItem(item);
     setItemFormOpen(true);
   }
 
-  async function handleDeleteItem(item: Item) {
-    if (!confirm(`Delete "${item.name}"?`)) return;
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const result = await deleteItem(supabase, user.id, item.id);
-    if (!result.error) {
-      setResults((prev) => prev.filter((r) => r.id !== item.id));
-    }
+  function handleDeleteItem(item: Item) {
+    setConfirmTitle(`Delete "${item.name}"?`);
+    pendingAction.current = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const result = await deleteItem(supabase, user.id, item.id);
+      if (!result.error) {
+        setResults((prev) => prev.filter((r) => r.id !== item.id));
+      }
+    };
+    setConfirmOpen(true);
   }
 
   async function handleItemSubmit(values: {
@@ -122,6 +130,13 @@ export default function SearchPage() {
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
         onSubmit={handleItemSubmit}
+      />
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmTitle}
+        onConfirm={() => pendingAction.current()}
       />
     </div>
   );
