@@ -1,8 +1,10 @@
 "use client";
 
-import { Package, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Package, Pencil, Trash2, MoreVertical, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Item } from "@/lib/types";
 
 interface ItemCardProps {
@@ -10,20 +12,20 @@ interface ItemCardProps {
   /** Optional space path shown when displaying search results. */
   spacePath?: string | null;
   onEdit: (item: Item) => void;
+  onMove: (item: Item) => void;
   onDelete: (item: Item) => void;
 }
 
-/**
- * Displays an item's name, description, and tags with edit/delete actions.
- *
- * @param item - The Item record to display.
- * @param spacePath - Breadcrumb path shown in search results.
- * @param onEdit - Called when the edit button is clicked.
- * @param onDelete - Called when the delete button is clicked.
- */
-export function ItemCard({ item, spacePath, onEdit, onDelete }: ItemCardProps) {
+export function ItemCard({ item, spacePath, onEdit, onMove, onDelete }: ItemCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function action(fn: () => void) {
+    setMenuOpen(false);
+    fn();
+  }
+
   return (
-    <div className="group flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
       <Package className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
 
       <div className="flex-1 min-w-0">
@@ -47,26 +49,41 @@ export function ItemCard({ item, spacePath, onEdit, onDelete }: ItemCardProps) {
         )}
       </div>
 
-      <div className="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          aria-label={`Edit ${item.name}`}
-          onClick={() => onEdit(item)}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-destructive"
-          aria-label={`Delete ${item.name}`}
-          onClick={() => onDelete(item)}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            aria-label={`Actions for ${item.name}`}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-36 p-1" align="end">
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => action(() => onEdit(item))}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => action(() => onMove(item))}
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            Move to…
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
+            onClick={() => action(() => onDelete(item))}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </button>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

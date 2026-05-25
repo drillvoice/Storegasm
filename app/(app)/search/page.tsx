@@ -6,6 +6,7 @@ import { useItemSearch } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
+import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +32,9 @@ export default function SearchPage() {
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [movingItem, setMovingItem] = useState<Item | null>(null);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState("");
   const pendingAction = useRef<() => void>(() => {});
@@ -38,6 +42,23 @@ export default function SearchPage() {
   function openEditItem(item: Item) {
     setEditingItem(item);
     setItemFormOpen(true);
+  }
+
+  function openMoveItem(item: Item) {
+    setMovingItem(item);
+    setMoveDialogOpen(true);
+  }
+
+  async function handleMoveItem(itemId: string, spaceId: string | null): Promise<string | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return "Not authenticated";
+    const result = await updateItem(supabase, user.id, itemId, { space_id: spaceId });
+    if (result.error) return result.error.message;
+    setResults((prev) =>
+      prev.map((r) => r.id === itemId ? { ...r, space_id: spaceId, space: null, space_path: null } : r)
+    );
+    return null;
   }
 
   function handleDeleteItem(item: Item) {
@@ -111,6 +132,7 @@ export default function SearchPage() {
               item={item}
               spacePath={item.space_path}
               onEdit={openEditItem}
+              onMove={openMoveItem}
               onDelete={handleDeleteItem}
             />
           ))}
@@ -130,6 +152,14 @@ export default function SearchPage() {
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
         onSubmit={handleItemSubmit}
+      />
+
+      <MoveItemDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        item={movingItem}
+        allSpaces={spaces}
+        onMove={handleMoveItem}
       />
 
       <ConfirmDialog
