@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.1] - 2026-05-26
+
+### Changed
+- Add/Edit Space dialog now anchors to the top of the viewport (matching the Add Item dialog), so it stays visible when the mobile keyboard opens. Also tightened form spacing, shrunk description to a single-row textarea, and placed Cancel/Submit buttons side-by-side.
+
+---
+
 ## [0.9.0] - 2026-05-25
 
 ### Added
