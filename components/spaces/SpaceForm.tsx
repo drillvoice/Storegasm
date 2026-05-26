@@ -123,12 +123,12 @@ export function SpaceForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[480px] top-4 translate-y-0 p-4 data-[state=open]:slide-in-from-top-4 data-[state=closed]:slide-out-to-top-4">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit space" : "Add space"}</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <form onSubmit={handleSubmit} className="space-y-3 pt-1">
           <div className="space-y-2">
             <Label htmlFor="space-name">Name *</Label>
             <Input
@@ -148,7 +148,8 @@ export function SpaceForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional notes about this space"
-              rows={2}
+              rows={1}
+              className="min-h-0 resize-none"
             />
           </div>
 
@@ -178,7 +179,7 @@ export function SpaceForm({
             </p>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-row justify-end space-x-2">
             <Button
               type="button"
               variant="outline"
