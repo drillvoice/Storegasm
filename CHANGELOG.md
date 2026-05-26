@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.2] - 2026-05-26
+
+### Fixed
+- New spaces now appear immediately in the treemap without requiring a page refresh. Previously, adding the first child space to a location would leave a permanent grey placeholder because the ResizeObserver was never attached to the container div (it hadn't been rendered yet during the empty state).
+
+---
+
 ## [0.9.1] - 2026-05-26
 
 ### Changed

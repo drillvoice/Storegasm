@@ -99,7 +99,9 @@ export function SpaceTreemap({
     const observer = new ResizeObserver(measure);
     if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [measure]);
+  // Re-run when spaces becomes non-empty so we measure the newly-mounted container.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measure, spaces.length]);
 
   if (spaces.length === 0) {
     if (emptyDismissed) return null;
