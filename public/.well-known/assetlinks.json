@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.storegasm.app",
+      "sha256_cert_fingerprints": [
+        "47:CA:AA:7F:33:36:F6:8B:FB:76:74:AF:70:42:3E:2B:B8:E3:E7:5D:AE:4D:C8:B4:4A:88:25:96:5C:BE:1C:E1"
+      ]
+    }
+  }
+]
