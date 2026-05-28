@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.3] - 2026-05-28
+
+### Added
+- localStorage stale-while-revalidate cache for spaces, items, and tags. On return visits the dashboard renders instantly from cache while Supabase revalidates in the background — no loading spinner.
+
+---
+
 ## [0.9.2] - 2026-05-26
 
 ### Fixed

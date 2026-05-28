@@ -11,6 +11,7 @@ import {
   searchItems,
   fetchAllTags,
 } from "@/lib/db/items";
+import { readCache, writeCache } from "@/lib/cache";
 import type {
   Item,
   ItemWithSpace,
@@ -44,6 +45,7 @@ export function useItems(spaceId: string | null) {
     const userId = await getUserId();
     if (!userId) return;
 
+    const cacheKey = `${userId}:items:${spaceId ?? 'null'}`;
     const result =
       spaceId === null
         ? await fetchUnassignedItems(supabase, userId)
@@ -53,13 +55,31 @@ export function useItems(spaceId: string | null) {
       setError(result.error.message);
     } else {
       setItems(result.data);
+      writeCache(cacheKey, result.data);
       setError(null);
     }
   }, [spaceId, supabase, getUserId]);
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, [refresh]);
+    let cancelled = false;
+    (async () => {
+      const userId = await getUserId();
+      if (!userId || cancelled) { setLoading(false); return; }
+
+      // Render from cache immediately — no spinner on return visits.
+      const cacheKey = `${userId}:items:${spaceId ?? 'null'}`;
+      const cached = readCache<Item[]>(cacheKey);
+      if (cached !== null && !cancelled) {
+        setItems(cached);
+        setLoading(false);
+      }
+
+      // Revalidate from network in the background.
+      await refresh();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [refresh, getUserId, spaceId]);
 
   async function addItem(payload: CreateItemPayload): Promise<string | null> {
     const userId = await getUserId();
@@ -142,8 +162,19 @@ export function useAllTags() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
+
+      const cacheKey = `${user.id}:tags`;
+      const cached = readCache<string[]>(cacheKey);
+      if (cached !== null) {
+        setTags(cached);
+        setLoading(false);
+      }
+
       const result = await fetchAllTags(supabase, user.id);
-      if (result.data) setTags(result.data);
+      if (result.data) {
+        setTags(result.data);
+        writeCache(cacheKey, result.data);
+      }
       setLoading(false);
     })();
   }, [supabase]);

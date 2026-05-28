@@ -16,6 +16,7 @@ import {
   updateSpace,
   deleteSpace,
 } from "@/lib/db/spaces";
+import { readCache, writeCache } from "@/lib/cache";
 import type { SpaceNode, CreateSpacePayload, UpdateSpacePayload } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -112,13 +113,30 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
       setError(result.error.message);
     } else {
       setSpaces(result.data);
+      writeCache(`${userId}:spaces`, result.data);
       setError(null);
     }
   }, [supabase, getUserId]);
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, [refresh]);
+    let cancelled = false;
+    (async () => {
+      const userId = await getUserId();
+      if (!userId || cancelled) { setLoading(false); return; }
+
+      // Render from cache immediately — no spinner on return visits.
+      const cached = readCache<SpaceNode[]>(`${userId}:spaces`);
+      if (cached !== null && !cancelled) {
+        setSpaces(cached);
+        setLoading(false);
+      }
+
+      // Revalidate from network in the background.
+      await refresh();
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [refresh, getUserId]);
 
   async function addSpace(payload: CreateSpacePayload): Promise<string | null> {
     const userId = await getUserId();
