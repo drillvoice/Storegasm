@@ -34,18 +34,6 @@ function insertNode(tree: SpaceNode[], node: SpaceNode): SpaceNode[] {
   });
 }
 
-function patchNode(
-  tree: SpaceNode[],
-  id: string,
-  patch: Partial<SpaceNode>
-): SpaceNode[] {
-  return tree.map((n) => {
-    if (n.id === id) return { ...n, ...patch };
-    const updated = patchNode(n.children, id, patch);
-    return updated === n.children ? n : { ...n, children: updated };
-  });
-}
-
 function pruneNode(tree: SpaceNode[], id: string): SpaceNode[] {
   return tree
     .filter((n) => n.id !== id)
@@ -113,7 +101,6 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
       setError(result.error.message);
     } else {
       setSpaces(result.data);
-      writeCache(`${userId}:spaces`, result.data);
       setError(null);
     }
   }, [supabase, getUserId]);
@@ -138,12 +125,20 @@ export function SpacesProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [refresh, getUserId]);
 
+  // Write through to the cache whenever the tree changes (initial load,
+  // revalidation, or an optimistic mutation) so return visits stay fresh.
+  useEffect(() => {
+    if (loading) return;
+    const userId = userIdRef.current;
+    if (userId) writeCache(`${userId}:spaces`, spaces);
+  }, [spaces, loading]);
+
   async function addSpace(payload: CreateSpacePayload): Promise<string | null> {
     const userId = await getUserId();
     if (!userId) return "Not authenticated";
 
     const now = new Date().toISOString();
-    const tempId = `opt-${Date.now()}`;
+    const tempId = `opt-${crypto.randomUUID()}`;
     const optimistic: SpaceNode = {
       id: tempId,
       user_id: userId,

@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.4] - 2026-05-29
+
+### Fixed
+- Signing out now clears the localStorage cache, so one user's spaces and items are no longer left readable on a shared device.
+- Moving an item to a different space (via edit or the move dialog) now removes it from the current space's list immediately, instead of leaving a stale copy until the next refresh.
+- Optimistic temp IDs now use `crypto.randomUUID()` instead of a timestamp, removing a collision risk when two records are added in the same millisecond.
+
+### Changed
+- Optimistic create/edit/delete now write through to the localStorage cache, so returning to a page after a change shows the latest data instead of a stale snapshot.
+
+### Removed
+- Dead sign-out `<form action>` (the route never existed) and unused tree/test helpers.
+
+---
+
 ## [0.9.3] - 2026-05-28
 
 ### Added

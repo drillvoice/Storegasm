@@ -45,7 +45,6 @@ export function useItems(spaceId: string | null) {
     const userId = await getUserId();
     if (!userId) return;
 
-    const cacheKey = `${userId}:items:${spaceId ?? 'null'}`;
     const result =
       spaceId === null
         ? await fetchUnassignedItems(supabase, userId)
@@ -55,7 +54,6 @@ export function useItems(spaceId: string | null) {
       setError(result.error.message);
     } else {
       setItems(result.data);
-      writeCache(cacheKey, result.data);
       setError(null);
     }
   }, [spaceId, supabase, getUserId]);
@@ -81,12 +79,20 @@ export function useItems(spaceId: string | null) {
     return () => { cancelled = true; };
   }, [refresh, getUserId, spaceId]);
 
+  // Write through to the cache whenever the list changes (initial load,
+  // revalidation, or an optimistic mutation) so return visits stay fresh.
+  useEffect(() => {
+    if (loading) return;
+    const userId = userIdRef.current;
+    if (userId) writeCache(`${userId}:items:${spaceId ?? 'null'}`, items);
+  }, [items, spaceId, loading]);
+
   async function addItem(payload: CreateItemPayload): Promise<string | null> {
     const userId = await getUserId();
     if (!userId) return "Not authenticated";
 
     const now = new Date().toISOString();
-    const tempId = `opt-${Date.now()}`;
+    const tempId = `opt-${crypto.randomUUID()}`;
     const optimistic: Item = {
       id: tempId,
       user_id: userId,
@@ -116,9 +122,14 @@ export function useItems(spaceId: string | null) {
     if (!userId) return "Not authenticated";
 
     const snapshot = items;
-    setItems((prev) =>
-      prev.map((i) => (i.id === itemId ? { ...i, ...payload } : i))
-    );
+    setItems((prev) => {
+      // Moving the item out of this list's space — drop it so it doesn't
+      // linger in the wrong place until the next revalidation.
+      if ("space_id" in payload && payload.space_id !== spaceId) {
+        return prev.filter((i) => i.id !== itemId);
+      }
+      return prev.map((i) => (i.id === itemId ? { ...i, ...payload } : i));
+    });
 
     const result = await updateItem(supabase, userId, itemId, payload);
     if (result.error) {

@@ -100,7 +100,6 @@ export function SpaceTreemap({
     if (containerRef.current) observer.observe(containerRef.current);
     return () => observer.disconnect();
   // Re-run when spaces becomes non-empty so we measure the newly-mounted container.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure, spaces.length]);
 
   if (spaces.length === 0) {

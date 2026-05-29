@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
 import { InstallPrompt } from "@/components/InstallPrompt";
-import { Search, LogOut } from "lucide-react";
+import { SignOutButton } from "@/components/SignOutButton";
+import { Search } from "lucide-react";
 
 /**
  * Authenticated app shell layout.
@@ -40,11 +41,7 @@ export default async function AppLayout({
               </Link>
             </Button>
 
-            <form action="/auth/signout" method="POST">
-              <Button variant="ghost" size="icon" aria-label="Sign out" formAction={signOutAction}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </form>
+            <SignOutButton />
           </div>
         </div>
       </header>
@@ -64,14 +61,4 @@ export default async function AppLayout({
       <InstallPrompt />
     </div>
   );
-}
-
-/**
- * Server Action that signs the user out and redirects to /login.
- */
-async function signOutAction() {
-  "use server";
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  redirect("/login");
 }
