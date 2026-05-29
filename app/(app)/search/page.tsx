@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { Search } from "lucide-react";
 import { useItemSearch, useAllTags } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
@@ -27,8 +27,14 @@ export default function SearchPage() {
 
   // Local mirror of search results — updated optimistically on edit/delete
   // so the list reflects mutations without waiting for the debounced re-fetch.
+  // Synced from the hook during render (not an effect) so it tracks new results
+  // without an extra commit.
   const [results, setResults] = useState<ItemWithSpace[]>([]);
-  useEffect(() => { setResults(searchResults); }, [searchResults]);
+  const [prevSearch, setPrevSearch] = useState(searchResults);
+  if (searchResults !== prevSearch) {
+    setPrevSearch(searchResults);
+    setResults(searchResults);
+  }
 
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);

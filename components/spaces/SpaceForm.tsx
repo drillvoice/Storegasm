@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -67,14 +67,18 @@ export function SpaceForm({
 
   const isEditing = !!initialValues?.id;
 
-  useEffect(() => {
+  // Reset the form to its initial values each time the dialog opens. Done as a
+  // render-time adjustment (not an effect) so it happens before paint.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setName(initialValues?.name ?? "");
       setDescription(initialValues?.description ?? "");
       setParentId(initialValues?.parent_id ?? defaultParentId ?? null);
       setError(null);
     }
-  }, [open, initialValues, defaultParentId]);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

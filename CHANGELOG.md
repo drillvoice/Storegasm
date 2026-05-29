@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0] - 2026-05-29
+
+### Changed
+- Migrated all client data fetching to React Query (`@tanstack/react-query`), replacing the hand-rolled localStorage cache and `SpacesContext`. The cache is persisted to localStorage (stale-while-revalidate) and version-busted on deploy, matching the previous instant-load behavior.
+- Mutations now invalidate related queries, so a change made in one view (e.g. adding or moving an item) is reflected in other views without a manual refresh. The tag list is now cached instead of refetched on every navigation.
+
+### Removed
+- `lib/cache.ts` and `contexts/SpacesContext.tsx`, now superseded by the React Query client and its persister.
+
+---
+
+## [0.9.5] - 2026-05-29
+
+### Fixed
+- localStorage cache entries are now stamped with the app version. After an update, entries written by an older version are discarded instead of being deserialized into a possibly-incompatible shape, preventing a stale-cache crash on first paint.
+
+---
+
+## [0.9.4] - 2026-05-29
+
+### Fixed
+- Signing out now clears the localStorage cache, so one user's spaces and items are no longer left readable on a shared device.
+- Moving an item to a different space (via edit or the move dialog) now removes it from the current space's list immediately, instead of leaving a stale copy until the next refresh.
+- Optimistic temp IDs now use `crypto.randomUUID()` instead of a timestamp, removing a collision risk when two records are added in the same millisecond.
+
+### Changed
+- Optimistic create/edit/delete now write through to the localStorage cache, so returning to a page after a change shows the latest data instead of a stale snapshot.
+
+### Removed
+- Dead sign-out `<form action>` (the route never existed) and unused tree/test helpers.
+
+---
+
 ## [0.9.3] - 2026-05-28
 
 ### Added
