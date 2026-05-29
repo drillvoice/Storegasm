@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
   fetchItemsBySpace,
@@ -11,7 +12,7 @@ import {
   searchItems,
   fetchAllTags,
 } from "@/lib/db/items";
-import { readCache, writeCache } from "@/lib/cache";
+import { useUserId } from "@/hooks/useUserId";
 import type {
   Item,
   ItemWithSpace,
@@ -23,220 +24,223 @@ import type {
  * Hook for managing items within a specific space.
  *
  * Pass `spaceId: null` to fetch unassigned items.
- *
- * @param spaceId - The space UUID to fetch items for, or null for unassigned.
- * @returns Items, loading state, error, and mutation helpers.
  */
 export function useItems(spaceId: string | null) {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const userIdRef = useRef<string | null>(null);
-  const supabase = useMemo(() => createClient(), []);
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  const key = ["items", userId, spaceId ?? "null"];
 
-  const getUserId = useCallback(async (): Promise<string | null> => {
-    if (userIdRef.current) return userIdRef.current;
-    const { data: { user } } = await supabase.auth.getUser();
-    userIdRef.current = user?.id ?? null;
-    return userIdRef.current;
-  }, [supabase]);
+  const query = useQuery({
+    queryKey: key,
+    enabled: !!userId,
+    queryFn: async () => {
+      const supabase = createClient();
+      const result =
+        spaceId === null
+          ? await fetchUnassignedItems(supabase, userId!)
+          : await fetchItemsBySpace(supabase, userId!, spaceId);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+  });
 
-  const refresh = useCallback(async () => {
-    const userId = await getUserId();
-    if (!userId) return;
+  function invalidate() {
+    // Item lists for other spaces and the tag list may also be affected.
+    queryClient.invalidateQueries({ queryKey: ["items", userId] });
+    queryClient.invalidateQueries({ queryKey: ["tags", userId] });
+  }
 
-    const result =
-      spaceId === null
-        ? await fetchUnassignedItems(supabase, userId)
-        : await fetchItemsBySpace(supabase, userId, spaceId);
-
-    if (result.error) {
-      setError(result.error.message);
-    } else {
-      setItems(result.data);
-      setError(null);
-    }
-  }, [spaceId, supabase, getUserId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const userId = await getUserId();
-      if (!userId || cancelled) { setLoading(false); return; }
-
-      // Render from cache immediately — no spinner on return visits.
-      const cacheKey = `${userId}:items:${spaceId ?? 'null'}`;
-      const cached = readCache<Item[]>(cacheKey);
-      if (cached !== null && !cancelled) {
-        setItems(cached);
-        setLoading(false);
+  const addMutation = useMutation({
+    mutationFn: async (payload: CreateItemPayload) => {
+      const supabase = createClient();
+      const result = await createItem(supabase, userId!, payload);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+    onMutate: async (payload) => {
+      const targetSpace = payload.space_id ?? spaceId;
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Item[]>(key);
+      // Only show the new item in this list if it actually belongs here.
+      if (targetSpace === spaceId) {
+        const now = new Date().toISOString();
+        const optimistic: Item = {
+          id: `opt-${crypto.randomUUID()}`,
+          user_id: userId!,
+          name: payload.name,
+          description: payload.description ?? null,
+          space_id: targetSpace,
+          tags: payload.tags ?? [],
+          created_at: now,
+          updated_at: now,
+        };
+        queryClient.setQueryData<Item[]>(key, (old) => [
+          ...(old ?? []),
+          optimistic,
+        ]);
       }
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(key, ctx.previous);
+    },
+    onSettled: invalidate,
+  });
 
-      // Revalidate from network in the background.
-      await refresh();
-      if (!cancelled) setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [refresh, getUserId, spaceId]);
+  const editMutation = useMutation({
+    mutationFn: async (vars: { itemId: string; payload: UpdateItemPayload }) => {
+      const supabase = createClient();
+      const result = await updateItem(
+        supabase,
+        userId!,
+        vars.itemId,
+        vars.payload
+      );
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Item[]>(key);
+      queryClient.setQueryData<Item[]>(key, (old) => {
+        const list = old ?? [];
+        // Moving the item out of this list's space — drop it.
+        if ("space_id" in vars.payload && vars.payload.space_id !== spaceId) {
+          return list.filter((i) => i.id !== vars.itemId);
+        }
+        return list.map((i) =>
+          i.id === vars.itemId ? { ...i, ...vars.payload } : i
+        );
+      });
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(key, ctx.previous);
+    },
+    onSettled: invalidate,
+  });
 
-  // Write through to the cache whenever the list changes (initial load,
-  // revalidation, or an optimistic mutation) so return visits stay fresh.
-  useEffect(() => {
-    if (loading) return;
-    const userId = userIdRef.current;
-    if (userId) writeCache(`${userId}:items:${spaceId ?? 'null'}`, items);
-  }, [items, spaceId, loading]);
+  const removeMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      const supabase = createClient();
+      const result = await deleteItem(supabase, userId!, itemId);
+      if (result.error) throw new Error(result.error.message);
+    },
+    onMutate: async (itemId) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Item[]>(key);
+      queryClient.setQueryData<Item[]>(key, (old) =>
+        (old ?? []).filter((i) => i.id !== itemId)
+      );
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(key, ctx.previous);
+    },
+    onSettled: invalidate,
+  });
 
   async function addItem(payload: CreateItemPayload): Promise<string | null> {
-    const userId = await getUserId();
     if (!userId) return "Not authenticated";
-
-    const now = new Date().toISOString();
-    const tempId = `opt-${crypto.randomUUID()}`;
-    const optimistic: Item = {
-      id: tempId,
-      user_id: userId,
-      name: payload.name,
-      description: payload.description ?? null,
-      space_id: payload.space_id ?? spaceId,
-      tags: payload.tags ?? [],
-      created_at: now,
-      updated_at: now,
-    };
-    setItems((prev) => [...prev, optimistic]);
-
-    const result = await createItem(supabase, userId, payload);
-    if (result.error) {
-      setItems((prev) => prev.filter((i) => i.id !== tempId));
-      return result.error.message;
+    try {
+      await addMutation.mutateAsync(payload);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
     }
-    setItems((prev) => prev.map((i) => (i.id === tempId ? result.data : i)));
-    return null;
   }
 
   async function editItem(
     itemId: string,
     payload: UpdateItemPayload
   ): Promise<string | null> {
-    const userId = await getUserId();
     if (!userId) return "Not authenticated";
-
-    const snapshot = items;
-    setItems((prev) => {
-      // Moving the item out of this list's space — drop it so it doesn't
-      // linger in the wrong place until the next revalidation.
-      if ("space_id" in payload && payload.space_id !== spaceId) {
-        return prev.filter((i) => i.id !== itemId);
-      }
-      return prev.map((i) => (i.id === itemId ? { ...i, ...payload } : i));
-    });
-
-    const result = await updateItem(supabase, userId, itemId, payload);
-    if (result.error) {
-      setItems(snapshot);
-      return result.error.message;
+    try {
+      await editMutation.mutateAsync({ itemId, payload });
+      return null;
+    } catch (e) {
+      return (e as Error).message;
     }
-    return null;
   }
 
   async function removeItem(itemId: string): Promise<string | null> {
-    const userId = await getUserId();
     if (!userId) return "Not authenticated";
-
-    const snapshot = items;
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-
-    const result = await deleteItem(supabase, userId, itemId);
-    if (result.error) {
-      setItems(snapshot);
-      return result.error.message;
+    try {
+      await removeMutation.mutateAsync(itemId);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
     }
-    return null;
   }
 
-  return { items, loading, error, refresh, addItem, editItem, removeItem };
+  async function refresh(): Promise<void> {
+    await queryClient.invalidateQueries({ queryKey: key });
+  }
+
+  return {
+    items: query.data ?? [],
+    loading: !userId || query.isPending,
+    error: query.error ? (query.error as Error).message : null,
+    refresh,
+    addItem,
+    editItem,
+    removeItem,
+  };
 }
 
 /**
  * Hook that returns all distinct tags used across the user's items.
- *
- * Fetches once on mount; returns a sorted, deduplicated list.
- *
- * @returns All existing tags, loading state, and error.
  */
 export function useAllTags() {
-  const [tags, setTags] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const supabase = useMemo(() => createClient(), []);
+  const userId = useUserId();
 
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+  const query = useQuery({
+    queryKey: ["tags", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const supabase = createClient();
+      const result = await fetchAllTags(supabase, userId!);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+  });
 
-      const cacheKey = `${user.id}:tags`;
-      const cached = readCache<string[]>(cacheKey);
-      if (cached !== null) {
-        setTags(cached);
-        setLoading(false);
-      }
-
-      const result = await fetchAllTags(supabase, user.id);
-      if (result.data) {
-        setTags(result.data);
-        writeCache(cacheKey, result.data);
-      }
-      setLoading(false);
-    })();
-  }, [supabase]);
-
-  return { tags, loading };
+  return { tags: query.data ?? [], loading: !userId || query.isPending };
 }
 
 /**
  * Hook for full-text searching items across all spaces.
  *
  * Debounces the query by 300 ms before firing to avoid thrashing.
- *
- * @param query - The raw search string.
- * @returns Search results, loading state, and error.
  */
 export function useItemSearch(query: string) {
-  const [results, setResults] = useState<ItemWithSpace[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const supabase = useMemo(() => createClient(), []);
+  const userId = useUserId();
   const trimmed = query.trim();
+  const [debounced, setDebounced] = useState(trimmed);
 
   useEffect(() => {
-    if (!trimmed) return;
-
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const result = await searchItems(supabase, user.id, trimmed);
-      if (result.error) {
-        setError(result.error.message);
-      } else {
-        setResults(result.data);
-        setError(null);
-      }
-      setLoading(false);
-    }, 300);
-
+    const timer = setTimeout(() => setDebounced(trimmed), 300);
     return () => clearTimeout(timer);
-  }, [trimmed, supabase]);
+  }, [trimmed]);
 
-  // With a blank query there is nothing to search — surface an empty result
-  // without storing it, so we never call setState inside the effect.
+  const q = useQuery({
+    queryKey: ["search", userId, debounced],
+    enabled: !!userId && !!debounced,
+    queryFn: async () => {
+      const supabase = createClient();
+      const result = await searchItems(supabase, userId!, debounced);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+  });
+
   if (!trimmed) {
     return { results: [] as ItemWithSpace[], loading: false, error: null };
   }
-  return { results, loading, error };
+
+  return {
+    results: q.data ?? [],
+    loading: q.isFetching || trimmed !== debounced,
+    error: q.error ? (q.error as Error).message : null,
+  };
 }

@@ -26,39 +26,41 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
-          <Link href="/dashboard" className="font-semibold tracking-tight">
-            Storegasm
-          </Link>
+    <AppShell>
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
+            <Link href="/dashboard" className="font-semibold tracking-tight">
+              Storegasm
+            </Link>
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/search">
-                <Search className="mr-2 h-4 w-4" />
-                Search
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/search">
+                  <Search className="mr-2 h-4 w-4" />
+                  Search
+                </Link>
+              </Button>
 
-            <SignOutButton />
+              <SignOutButton />
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
-        <AppShell>{children}</AppShell>
-      </main>
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+          {children}
+        </main>
 
-      <footer className="border-t border-border py-3">
-        <div className="mx-auto max-w-5xl px-4 text-right">
-          <span className="text-xs text-muted-foreground/50 select-none">
-            v{process.env.NEXT_PUBLIC_APP_VERSION}
-          </span>
-        </div>
-      </footer>
+        <footer className="border-t border-border py-3">
+          <div className="mx-auto max-w-5xl px-4 text-right">
+            <span className="text-xs text-muted-foreground/50 select-none">
+              v{process.env.NEXT_PUBLIC_APP_VERSION}
+            </span>
+          </div>
+        </footer>
 
-      <InstallPrompt />
-    </div>
+        <InstallPrompt />
+      </div>
+    </AppShell>
   );
 }
