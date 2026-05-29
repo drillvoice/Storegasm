@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.5] - 2026-05-29
+
+### Fixed
+- localStorage cache entries are now stamped with the app version. After an update, entries written by an older version are discarded instead of being deserialized into a possibly-incompatible shape, preventing a stale-cache crash on first paint.
+
+---
+
 ## [0.9.4] - 2026-05-29
 
 ### Fixed

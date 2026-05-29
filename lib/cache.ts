@@ -1,10 +1,27 @@
 const PREFIX = 'sg:';
 
+// Cached entries are stamped with the app version. When the app updates, any
+// entry written by an older version is treated as a miss instead of being
+// deserialized into a possibly-incompatible shape (which would crash the UI on
+// first paint, before network revalidation could correct it).
+const VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev';
+
+interface Envelope<T> {
+  v: string;
+  data: T;
+}
+
 export function readCache<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(PREFIX + key);
-    return raw ? (JSON.parse(raw) as T) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Envelope<T>;
+    if (parsed?.v !== VERSION) {
+      localStorage.removeItem(PREFIX + key);
+      return null;
+    }
+    return parsed.data;
   } catch {
     return null;
   }
@@ -13,7 +30,8 @@ export function readCache<T>(key: string): T | null {
 export function writeCache<T>(key: string, data: T): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(data));
+    const envelope: Envelope<T> = { v: VERSION, data };
+    localStorage.setItem(PREFIX + key, JSON.stringify(envelope));
   } catch {
     // Quota exceeded or unavailable — degrade silently.
   }
