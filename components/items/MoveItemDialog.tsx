@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -39,12 +39,16 @@ export function MoveItemDialog({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  // Reset the form to the item's current space each time the dialog opens.
+  // Done as a render-time adjustment (not an effect) so it happens before paint.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open && item) {
       setSpaceId(item.space_id);
       setError(null);
     }
-  }, [open, item]);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

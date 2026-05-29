@@ -207,12 +207,10 @@ export function useItemSearch(query: string) {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
+  const trimmed = query.trim();
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
+    if (!trimmed) return;
 
     const timer = setTimeout(async () => {
       setLoading(true);
@@ -222,7 +220,7 @@ export function useItemSearch(query: string) {
         return;
       }
 
-      const result = await searchItems(supabase, user.id, query);
+      const result = await searchItems(supabase, user.id, trimmed);
       if (result.error) {
         setError(result.error.message);
       } else {
@@ -233,7 +231,12 @@ export function useItemSearch(query: string) {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, supabase]);
+  }, [trimmed, supabase]);
 
+  // With a blank query there is nothing to search — surface an empty result
+  // without storing it, so we never call setState inside the effect.
+  if (!trimmed) {
+    return { results: [] as ItemWithSpace[], loading: false, error: null };
+  }
   return { results, loading, error };
 }

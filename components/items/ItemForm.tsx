@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -84,7 +84,11 @@ export function ItemForm({
 
   const isEditing = !!initialValues?.id;
 
-  useEffect(() => {
+  // Reset the form to its initial values each time the dialog opens. Done as a
+  // render-time adjustment (not an effect) so it happens before paint.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setName(initialValues?.name ?? "");
       setDescription(initialValues?.description ?? "");
@@ -94,7 +98,7 @@ export function ItemForm({
       setSuggestionIndex(-1);
       setError(null);
     }
-  }, [open, initialValues, defaultSpaceId]);
+  }
 
   function selectSuggestion(tag: string) {
     if (!tags.includes(tag)) {
