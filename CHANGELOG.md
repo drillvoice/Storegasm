@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] - 2026-07-12
+
+### Added
+- Show/hide password toggle on the login and signup forms, so you can check what you typed (especially on mobile keyboards).
+
+---
+
 ## [1.0.0] - 2026-07-11
 
 ### Changed
