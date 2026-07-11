@@ -2,7 +2,7 @@
 
 // Managed automatically — run `npm version patch|minor|major` to bump.
 // sync-version.js updates this to match package.json before each release commit.
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v1.0.1';
 const CACHE_NAME = `storegasm-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
