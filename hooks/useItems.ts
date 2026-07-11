@@ -197,6 +197,10 @@ export function useAllTags() {
   return { tags: query.data ?? [], loading: !userId || query.isPending };
 }
 
+// Stable fallback so consumers that compare results by reference (e.g. the
+// search page's render-time sync) don't see a "new" empty result every render.
+const NO_RESULTS: ItemWithSpace[] = [];
+
 /**
  * Hook for full-text searching items across all spaces.
  *
@@ -223,11 +227,11 @@ export function useItemSearch(query: string) {
   });
 
   if (!trimmed) {
-    return { results: [] as ItemWithSpace[], loading: false, error: null };
+    return { results: NO_RESULTS, loading: false, error: null };
   }
 
   return {
-    results: q.data ?? [],
+    results: q.data ?? NO_RESULTS,
     loading: q.isFetching || trimmed !== debounced,
     error: q.error ? (q.error as Error).message : null,
   };
