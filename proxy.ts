@@ -1,52 +1,29 @@
-import { createServerClient } from "@supabase/ssr";
+import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
- * Refreshes the Supabase session on every request and enforces auth on all
- * routes under /(app). Unauthenticated requests to those routes are redirected
- * to /login.
+ * Optimistic auth guard for all app routes.
  *
- * IMPORTANT: This proxy must write updated session cookies back to the
- * response. Omitting this causes random logouts and difficult-to-debug auth
- * issues.
+ * Checks only for the presence of the Better Auth session cookie — fast and
+ * good enough for routing decisions. Real session validation happens
+ * server-side in app/(app)/layout.tsx and in every server action, so a stale
+ * or forged cookie can never reach data.
  */
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  // Refresh session — do not use getSession() here (not safe server-side).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const { pathname } = request.nextUrl;
+
+  // Better Auth's own endpoints must always pass through.
+  if (pathname.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
+
+  const sessionCookie = getSessionCookie(request);
 
   // Auth guard: redirect unauthenticated users away from app routes.
   if (
-    !user &&
+    !sessionCookie &&
     !pathname.startsWith("/login") &&
-    !pathname.startsWith("/signup") &&
-    !pathname.startsWith("/auth")
+    !pathname.startsWith("/signup")
   ) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
@@ -55,7 +32,7 @@ export async function proxy(request: NextRequest) {
 
   // Redirect authenticated users away from auth pages.
   if (
-    user &&
+    sessionCookie &&
     (pathname.startsWith("/login") || pathname.startsWith("/signup"))
   ) {
     const dashboardUrl = request.nextUrl.clone();
@@ -63,7 +40,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(dashboardUrl);
   }
 
-  return supabaseResponse;
+  return NextResponse.next();
 }
 
 export const config = {

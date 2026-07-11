@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** Migrated the entire backend from Supabase to Neon Postgres. Data access moved from browser-side Supabase queries (anon key + RLS) to server actions using Drizzle ORM; per-user isolation is now enforced in server code from the session.
+- **Breaking:** Replaced Supabase Auth with Better Auth (email + password, sessions stored in our own database). Existing users must sign up again — password hashes could not be ported. Email verification is disabled.
+- Full-text item search reimplemented with `websearch_to_tsquery` against the same tsvector columns; behavior is unchanged.
+
+### Removed
+- Supabase dependencies (`@supabase/supabase-js`, `@supabase/ssr`), client factories, the auth callback route, and the `supabase/` migrations directory (superseded by `drizzle/`).
+- The Supabase keepalive GitHub Actions workflow — Neon's free tier wakes automatically on query, so no keepalive is needed.
+
 ---
 
 ## [0.10.0] - 2026-05-29

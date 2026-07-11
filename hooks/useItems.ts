@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import {
   fetchItemsBySpace,
   fetchUnassignedItems,
@@ -11,7 +10,7 @@ import {
   deleteItem,
   searchItems,
   fetchAllTags,
-} from "@/lib/db/items";
+} from "@/lib/actions/items";
 import { useUserId } from "@/hooks/useUserId";
 import type {
   Item,
@@ -34,11 +33,10 @@ export function useItems(spaceId: string | null) {
     queryKey: key,
     enabled: !!userId,
     queryFn: async () => {
-      const supabase = createClient();
       const result =
         spaceId === null
-          ? await fetchUnassignedItems(supabase, userId!)
-          : await fetchItemsBySpace(supabase, userId!, spaceId);
+          ? await fetchUnassignedItems()
+          : await fetchItemsBySpace(spaceId);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -52,8 +50,7 @@ export function useItems(spaceId: string | null) {
 
   const addMutation = useMutation({
     mutationFn: async (payload: CreateItemPayload) => {
-      const supabase = createClient();
-      const result = await createItem(supabase, userId!, payload);
+      const result = await createItem(payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -89,13 +86,7 @@ export function useItems(spaceId: string | null) {
 
   const editMutation = useMutation({
     mutationFn: async (vars: { itemId: string; payload: UpdateItemPayload }) => {
-      const supabase = createClient();
-      const result = await updateItem(
-        supabase,
-        userId!,
-        vars.itemId,
-        vars.payload
-      );
+      const result = await updateItem(vars.itemId, vars.payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -122,8 +113,7 @@ export function useItems(spaceId: string | null) {
 
   const removeMutation = useMutation({
     mutationFn: async (itemId: string) => {
-      const supabase = createClient();
-      const result = await deleteItem(supabase, userId!, itemId);
+      const result = await deleteItem(itemId);
       if (result.error) throw new Error(result.error.message);
     },
     onMutate: async (itemId) => {
@@ -198,8 +188,7 @@ export function useAllTags() {
     queryKey: ["tags", userId],
     enabled: !!userId,
     queryFn: async () => {
-      const supabase = createClient();
-      const result = await fetchAllTags(supabase, userId!);
+      const result = await fetchAllTags();
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -227,8 +216,7 @@ export function useItemSearch(query: string) {
     queryKey: ["search", userId, debounced],
     enabled: !!userId && !!debounced,
     queryFn: async () => {
-      const supabase = createClient();
-      const result = await searchItems(supabase, userId!, debounced);
+      const result = await searchItems(debounced);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },

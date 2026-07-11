@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -18,12 +19,9 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!user) redirect("/login");
+  if (!session) redirect("/login");
 
   return (
     <AppShell>

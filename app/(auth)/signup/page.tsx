@@ -3,15 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
  * Signup page — registers a new user with email and password.
- * On success, Supabase sends a confirmation email; user is redirected to login
- * with an informational message.
+ * Email verification is disabled, so a successful signup goes straight to the
+ * dashboard with an active session.
  */
 export default function SignupPage() {
   const router = useRouter();
@@ -35,20 +35,20 @@ export default function SignupPage() {
     }
 
     setLoading(true);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signUp({
+    const { error: authError } = await authClient.signUp.email({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/api/auth/callback` },
+      // Better Auth requires a name; the app has no profile concept, so
+      // derive one from the email's local part.
+      name: email.split("@")[0],
     });
 
     if (authError) {
-      setError(authError.message);
+      setError(authError.message ?? "Sign-up failed.");
       setLoading(false);
       return;
     }
 
-    // Supabase may auto-confirm in dev; try navigating to dashboard.
     router.push("/dashboard");
     router.refresh();
   }

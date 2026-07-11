@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -16,8 +16,7 @@ export function SignOutButton() {
   const queryClient = useQueryClient();
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await authClient.signOut();
     queryClient.clear();
     try {
       localStorage.removeItem("sg:rq");

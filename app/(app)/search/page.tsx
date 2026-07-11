@@ -9,8 +9,7 @@ import { ItemForm } from "@/components/items/ItemForm";
 import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { createClient } from "@/lib/supabase/client";
-import { updateItem, deleteItem } from "@/lib/db/items";
+import { updateItem, deleteItem } from "@/lib/actions/items";
 import type { ItemWithSpace, Item } from "@/lib/types";
 
 /**
@@ -57,10 +56,7 @@ export default function SearchPage() {
   }
 
   async function handleMoveItem(itemId: string, spaceId: string | null): Promise<string | null> {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return "Not authenticated";
-    const result = await updateItem(supabase, user.id, itemId, { space_id: spaceId });
+    const result = await updateItem(itemId, { space_id: spaceId });
     if (result.error) return result.error.message;
     setResults((prev) =>
       prev.map((r) => r.id === itemId ? { ...r, space_id: spaceId, space: null, space_path: null } : r)
@@ -71,10 +67,7 @@ export default function SearchPage() {
   function handleDeleteItem(item: Item) {
     setConfirmTitle(`Delete "${item.name}"?`);
     pendingAction.current = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const result = await deleteItem(supabase, user.id, item.id);
+      const result = await deleteItem(item.id);
       if (!result.error) {
         setResults((prev) => prev.filter((r) => r.id !== item.id));
       }
@@ -89,10 +82,7 @@ export default function SearchPage() {
     tags: string[];
   }): Promise<string | null> {
     if (!editingItem) return "No item selected";
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return "Not authenticated";
-    const result = await updateItem(supabase, user.id, editingItem.id, values);
+    const result = await updateItem(editingItem.id, values);
     if (result.error) return result.error.message;
     setResults((prev) =>
       prev.map((r) => (r.id === editingItem.id ? { ...r, ...values } : r))
