@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 
 /**
  * Resolves the authenticated user's ID once and caches it for the session.
@@ -14,11 +14,8 @@ export function useUserId(): string | null {
   const { data } = useQuery({
     queryKey: ["auth", "user"],
     queryFn: async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      return user?.id ?? null;
+      const { data: session } = await authClient.getSession();
+      return session?.user.id ?? null;
     },
     staleTime: Infinity,
     gcTime: Infinity,

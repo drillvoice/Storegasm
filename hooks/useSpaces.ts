@@ -1,13 +1,12 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
 import {
   fetchSpaceTree,
   createSpace,
   updateSpace,
   deleteSpace,
-} from "@/lib/db/spaces";
+} from "@/lib/actions/spaces";
 import { useUserId } from "@/hooks/useUserId";
 import type {
   SpaceNode,
@@ -92,8 +91,7 @@ export function useSpaces(): UseSpacesResult {
     queryKey: key,
     enabled: !!userId,
     queryFn: async () => {
-      const supabase = createClient();
-      const result = await fetchSpaceTree(supabase, userId!);
+      const result = await fetchSpaceTree();
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -101,8 +99,7 @@ export function useSpaces(): UseSpacesResult {
 
   const addMutation = useMutation({
     mutationFn: async (payload: CreateSpacePayload) => {
-      const supabase = createClient();
-      const result = await createSpace(supabase, userId!, payload);
+      const result = await createSpace(payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -135,13 +132,7 @@ export function useSpaces(): UseSpacesResult {
 
   const editMutation = useMutation({
     mutationFn: async (vars: { spaceId: string; payload: UpdateSpacePayload }) => {
-      const supabase = createClient();
-      const result = await updateSpace(
-        supabase,
-        userId!,
-        vars.spaceId,
-        vars.payload
-      );
+      const result = await updateSpace(vars.spaceId, vars.payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -163,8 +154,7 @@ export function useSpaces(): UseSpacesResult {
 
   const removeMutation = useMutation({
     mutationFn: async (spaceId: string) => {
-      const supabase = createClient();
-      const result = await deleteSpace(supabase, userId!, spaceId);
+      const result = await deleteSpace(spaceId);
       if (result.error) throw new Error(result.error.message);
     },
     onMutate: async (spaceId) => {

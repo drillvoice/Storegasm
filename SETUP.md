@@ -7,7 +7,7 @@ This guide covers the manual steps you need to complete before the app will run 
 ## Prerequisites
 
 - Node.js 20+
-- A free [Supabase](https://supabase.com) account
+- A free [Neon](https://neon.tech) account (Postgres hosting)
 - A free [Vercel](https://vercel.com) account
 - A [GitHub](https://github.com) account (for Vercel deployment)
 
@@ -28,47 +28,18 @@ git push -u origin main
 
 ---
 
-## Step 2 — Create a Supabase project
+## Step 2 — Create a Neon project
 
-1. Go to [supabase.com](https://supabase.com) and sign in.
+1. Go to [neon.tech](https://neon.tech) and sign in.
 2. Click **New project**.
-3. Choose a name (e.g. `storegasm`), set a strong database password, and select the region closest to you.
-4. Wait for the project to finish provisioning (~1 min).
-5. Go to **Project Settings → API**.
-6. Copy two values — you'll need them in Step 4:
-   - **Project URL** (e.g. `https://abcdefgh.supabase.co`)
-   - **anon public** key
+3. Choose a name (e.g. `storegasm`) and select the region closest to your Vercel deployment.
+4. On the project dashboard, click **Connect** and copy the **pooled** connection string (the host contains `-pooler`). You'll need it in Step 3.
+
+Neon's free tier suspends compute after inactivity but wakes automatically on the next query (~1 s) — no manual intervention needed.
 
 ---
 
-## Step 3 — Apply the database migrations
-
-You can apply the migrations in two ways:
-
-### Option A: Supabase SQL Editor (easiest, no CLI needed)
-
-1. In your Supabase project, go to **SQL Editor**.
-2. Open and run each file in order:
-   - `supabase/migrations/001_create_spaces.sql`
-   - `supabase/migrations/002_create_items.sql`
-   - `supabase/migrations/003_rls_policies.sql`
-
-### Option B: Supabase CLI
-
-```bash
-# Install the CLI (macOS)
-brew install supabase/tap/supabase
-
-# Link to your project (get the project ref from the Supabase dashboard URL)
-supabase link --project-ref YOUR_PROJECT_REF
-
-# Push all migrations
-supabase db push
-```
-
----
-
-## Step 4 — Set up local environment variables
+## Step 3 — Set up local environment variables
 
 Copy the example file and fill in your values:
 
@@ -79,16 +50,27 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+DATABASE_URL=postgresql://...   # the pooled connection string from Step 2
+BETTER_AUTH_SECRET=...          # generate with: openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3000
 ```
+
+---
+
+## Step 4 — Apply the database migrations
+
+```bash
+npm install
+npx drizzle-kit migrate
+```
+
+This creates the auth tables (user, session, account, verification), the app tables (spaces, items), and the full-text-search triggers. Migrations live in `drizzle/` and are generated from `lib/db/schema.ts`.
 
 ---
 
 ## Step 5 — Test locally
 
 ```bash
-npm install
 npm run dev
 ```
 
@@ -109,34 +91,14 @@ npm test
 3. Import your GitHub repository.
 4. Vercel auto-detects Next.js — keep all defaults.
 5. Before clicking **Deploy**, go to **Environment Variables** and add:
-   - `NEXT_PUBLIC_SUPABASE_URL` → your Supabase project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` → your Supabase anon key
+   - `DATABASE_URL` → your Neon pooled connection string
+   - `BETTER_AUTH_SECRET` → the same secret you generated (or a new one for prod)
+   - `BETTER_AUTH_URL` → your production URL (e.g. `https://storegasm.vercel.app`)
 6. Click **Deploy**.
 
 ---
 
-## Step 7 (Optional) — Connect Supabase ↔ Vercel integration
-
-This automatically syncs Supabase env vars to Vercel, so you never manually copy them again.
-
-1. In your Supabase project, go to **Project Settings → Integrations**.
-2. Find **Vercel** and click **Connect**.
-3. Follow the OAuth flow — select your Vercel team and the storegasm project.
-4. Done — future Supabase rotations auto-update Vercel.
-
----
-
-## Step 8 — Update the auth callback URL in Supabase
-
-Supabase needs to know your production URL for email confirmation links to work correctly.
-
-1. Go to **Authentication → URL Configuration** in Supabase.
-2. Set **Site URL** to your Vercel domain (e.g. `https://storegasm.vercel.app`).
-3. Add `https://storegasm.vercel.app/auth/callback` to **Redirect URLs**.
-
----
-
-## Step 9 — Replace placeholder icons
+## Step 7 — Replace placeholder icons
 
 The `/public/icons/` folder contains placeholder SVG files. Replace them with real PNG icons before shipping:
 
@@ -153,18 +115,22 @@ Use [Maskable.app](https://maskable.app) to ensure the icons look correct as ada
 
 | Variable | Description |
 |----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase public anon key (safe to expose) |
+| `DATABASE_URL` | Neon Postgres pooled connection string (server-only, keep secret) |
+| `BETTER_AUTH_SECRET` | Secret used to sign Better Auth sessions (server-only, keep secret) |
+| `BETTER_AUTH_URL` | The app's public origin, used for auth callbacks |
 
 ---
 
 ## Troubleshooting
 
-**"Redirect URL not allowed" error on sign-up**
-→ Add `http://localhost:3000/api/auth/callback` to Supabase Redirect URLs for local dev.
+**Redirected to /login in a loop after signing in**
+→ Check that `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are set and that the browser is accepting cookies. The proxy only checks for the session cookie's presence; the (app) layout validates it for real.
 
-**Login works but I'm immediately logged out**
-→ The middleware session refresh is misconfigured. Make sure `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set correctly in `.env.local`.
+**"No database connection string was provided to `neon()`"**
+→ `DATABASE_URL` is missing from `.env.local` (or from Vercel env vars in production).
 
 **Database errors on item/space creation**
-→ Check that you ran all three SQL migrations in order. Also confirm RLS is enabled (Migration 003).
+→ Make sure `npx drizzle-kit migrate` ran successfully — it must apply both the base DDL migration and the triggers migration.
+
+**Search returns nothing for new items**
+→ The `items_search_vector_trigger` didn't get applied. Re-run `npx drizzle-kit migrate` and check the `drizzle/0001_triggers.sql` migration was executed.

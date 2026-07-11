@@ -1,4 +1,8 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import "server-only";
+
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { items, spaces } from "@/lib/db/schema";
 import type {
   Item,
   ItemWithSpace,
@@ -7,50 +11,65 @@ import type {
   DbResult,
 } from "@/lib/types";
 
+// Explicit column set so search_vector never leaks into payloads and rows
+// match the Item interface exactly.
+const itemColumns = {
+  id: items.id,
+  user_id: items.user_id,
+  space_id: items.space_id,
+  name: items.name,
+  description: items.description,
+  tags: items.tags,
+  created_at: items.created_at,
+  updated_at: items.updated_at,
+};
+
+function toDbError(e: unknown): { data: null; error: { message: string } } {
+  return { data: null, error: { message: (e as Error).message } };
+}
+
 /**
  * Fetches all items assigned to a specific space.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param spaceId - The space UUID to filter by.
  * @returns An array of Item records ordered by name.
  */
 export async function fetchItemsBySpace(
-  client: SupabaseClient,
   userId: string,
   spaceId: string
 ): Promise<DbResult<Item[]>> {
-  const { data, error } = await client
-    .from("items")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("space_id", spaceId)
-    .order("name");
-
-  if (error) return { data: null, error };
-  return { data: data ?? [], error: null };
+  try {
+    const data = await db
+      .select(itemColumns)
+      .from(items)
+      .where(and(eq(items.user_id, userId), eq(items.space_id, spaceId)))
+      .orderBy(asc(items.name));
+    return { data, error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
  * Fetches items with no assigned space.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @returns An array of unassigned Item records.
  */
 export async function fetchUnassignedItems(
-  client: SupabaseClient,
   userId: string
 ): Promise<DbResult<Item[]>> {
-  const { data, error } = await client
-    .from("items")
-    .select("*")
-    .eq("user_id", userId)
-    .is("space_id", null)
-    .order("name");
-
-  if (error) return { data: null, error };
-  return { data: data ?? [], error: null };
+  try {
+    const data = await db
+      .select(itemColumns)
+      .from(items)
+      .where(and(eq(items.user_id, userId), isNull(items.space_id)))
+      .orderBy(asc(items.name));
+    return { data, error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
@@ -60,156 +79,159 @@ export async function fetchUnassignedItems(
  * covers item name, description, and tags. Fetches all spaces in parallel to
  * build complete breadcrumb paths (e.g. "Bedroom › Under bed › Tub 1").
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param query - The user's raw search query string.
  * @returns Items enriched with their full ancestor breadcrumb, ordered by name.
  */
 export async function searchItems(
-  client: SupabaseClient,
   userId: string,
   query: string
 ): Promise<DbResult<ItemWithSpace[]>> {
   if (!query.trim()) return { data: [], error: null };
 
-  // Fetch matching items and the full space list in parallel.
-  // The space list is needed to walk the ancestor chain for breadcrumbs.
-  const [itemResult, spacesResult] = await Promise.all([
-    client
-      .from("items")
-      .select("*, spaces(id, name)")
-      .eq("user_id", userId)
-      .textSearch("search_vector", query, { type: "websearch", config: "english" })
-      .order("name"),
-    client
-      .from("spaces")
-      .select("id, name, parent_id")
-      .eq("user_id", userId),
-  ]);
+  try {
+    // Fetch matching items and the full space list in parallel.
+    // The space list is needed to walk the ancestor chain for breadcrumbs.
+    const [itemRows, spaceRows] = await Promise.all([
+      db
+        .select({
+          ...itemColumns,
+          space: { id: spaces.id, name: spaces.name },
+        })
+        .from(items)
+        .leftJoin(spaces, eq(items.space_id, spaces.id))
+        .where(
+          and(
+            eq(items.user_id, userId),
+            sql`${items.search_vector} @@ websearch_to_tsquery('english', ${query})`
+          )
+        )
+        .orderBy(asc(items.name)),
+      db
+        .select({
+          id: spaces.id,
+          name: spaces.name,
+          parent_id: spaces.parent_id,
+        })
+        .from(spaces)
+        .where(eq(spaces.user_id, userId)),
+    ]);
 
-  if (itemResult.error) return { data: null, error: itemResult.error };
-  if (spacesResult.error) return { data: null, error: spacesResult.error };
+    type SpaceRow = { id: string; name: string; parent_id: string | null };
+    const spaceMap = new Map<string, SpaceRow>(spaceRows.map((s) => [s.id, s]));
 
-  type SpaceRow = { id: string; name: string; parent_id: string | null };
-  const spaceMap = new Map<string, SpaceRow>(
-    (spacesResult.data ?? []).map((s) => [s.id, s])
-  );
-
-  function buildPath(spaceId: string | null): string | null {
-    if (!spaceId) return null;
-    const parts: string[] = [];
-    let cur: SpaceRow | undefined = spaceMap.get(spaceId);
-    while (cur) {
-      parts.unshift(cur.name);
-      cur = cur.parent_id ? spaceMap.get(cur.parent_id) : undefined;
+    function buildPath(spaceId: string | null): string | null {
+      if (!spaceId) return null;
+      const parts: string[] = [];
+      let cur: SpaceRow | undefined = spaceMap.get(spaceId);
+      while (cur) {
+        parts.unshift(cur.name);
+        cur = cur.parent_id ? spaceMap.get(cur.parent_id) : undefined;
+      }
+      return parts.length > 0 ? parts.join(" › ") : null;
     }
-    return parts.length > 0 ? parts.join(" › ") : null;
-  }
 
-  const items: ItemWithSpace[] = (itemResult.data ?? []).map((row) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const space = (row as any).spaces as { id: string; name: string } | null;
-    return {
+    const result: ItemWithSpace[] = itemRows.map(({ space, ...row }) => ({
       ...row,
       tags: row.tags ?? [],
       space: space ?? null,
       space_path: buildPath(space?.id ?? null),
-    };
-  });
+    }));
 
-  return { data: items, error: null };
+    return { data: result, error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
  * Creates a new item.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param payload - The item fields to create.
  * @returns The newly created Item.
  */
 export async function createItem(
-  client: SupabaseClient,
   userId: string,
   payload: CreateItemPayload
 ): Promise<DbResult<Item>> {
-  const { data, error } = await client
-    .from("items")
-    .insert({ ...payload, user_id: userId, tags: payload.tags ?? [] })
-    .select()
-    .single();
-
-  if (error) return { data: null, error };
-  return { data, error: null };
+  try {
+    const rows = await db
+      .insert(items)
+      .values({ ...payload, user_id: userId, tags: payload.tags ?? [] })
+      .returning(itemColumns);
+    return { data: rows[0], error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
  * Updates an existing item owned by the user.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param itemId - The UUID of the item to update.
  * @param payload - The fields to patch.
  * @returns The updated Item.
  */
 export async function updateItem(
-  client: SupabaseClient,
   userId: string,
   itemId: string,
   payload: UpdateItemPayload
 ): Promise<DbResult<Item>> {
-  const { data, error } = await client
-    .from("items")
-    .update(payload)
-    .eq("id", itemId)
-    .eq("user_id", userId)
-    .select()
-    .single();
-
-  if (error) return { data: null, error };
-  return { data, error: null };
+  try {
+    const rows = await db
+      .update(items)
+      .set(payload)
+      .where(and(eq(items.id, itemId), eq(items.user_id, userId)))
+      .returning(itemColumns);
+    if (!rows[0]) {
+      return { data: null, error: { message: "Item not found" } };
+    }
+    return { data: rows[0], error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
  * Fetches all distinct tags used across a user's items, sorted alphabetically.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @returns A sorted array of unique tag strings.
  */
 export async function fetchAllTags(
-  client: SupabaseClient,
   userId: string
 ): Promise<DbResult<string[]>> {
-  const { data, error } = await client
-    .from("items")
-    .select("tags")
-    .eq("user_id", userId);
-
-  if (error) return { data: null, error };
-  const all = (data ?? []).flatMap((row) => row.tags ?? []);
-  const unique = [...new Set(all)].sort();
-  return { data: unique, error: null };
+  try {
+    const rows = await db
+      .select({ tags: items.tags })
+      .from(items)
+      .where(eq(items.user_id, userId));
+    const all = rows.flatMap((row) => row.tags ?? []);
+    const unique = [...new Set(all)].sort();
+    return { data: unique, error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
 
 /**
  * Deletes an item owned by the user.
  *
- * @param client - An authenticated Supabase client.
  * @param userId - The authenticated user's ID.
  * @param itemId - The UUID of the item to delete.
  */
 export async function deleteItem(
-  client: SupabaseClient,
   userId: string,
   itemId: string
 ): Promise<DbResult<null>> {
-  const { error } = await client
-    .from("items")
-    .delete()
-    .eq("id", itemId)
-    .eq("user_id", userId);
-
-  if (error) return { data: null, error };
-  return { data: null, error: null };
+  try {
+    await db
+      .delete(items)
+      .where(and(eq(items.id, itemId), eq(items.user_id, userId)));
+    return { data: null, error: null };
+  } catch (e) {
+    return toDbError(e);
+  }
 }
