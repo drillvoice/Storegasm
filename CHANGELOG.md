@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.0.0] - 2026-07-11
+
 ### Changed
 - **Breaking:** Migrated the entire backend from Supabase to Neon Postgres. Data access moved from browser-side Supabase queries (anon key + RLS) to server actions using Drizzle ORM; per-user isolation is now enforced in server code from the session.
 - **Breaking:** Replaced Supabase Auth with Better Auth (email + password, sessions stored in our own database). Existing users must sign up again — password hashes could not be ported. Email verification is disabled.
