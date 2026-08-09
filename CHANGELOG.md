@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-08-09
+
+### Added
+- **Password reset.** A "Forgot password?" link on the login page now sends a reset link by email, and the link opens a page where you choose a new password. Previously a forgotten password locked you out of your account for good.
+- Optional email delivery via Resend, configured with `RESEND_API_KEY` and `EMAIL_FROM`. With no key set, the reset email is written to the server log instead, so a self-hosted instance can still recover an account.
+
+### Changed
+- Resetting a password now signs out every other device, since a reset is also the recovery path after a compromised password.
+- `/forgot-password` and `/reset-password` are reachable without a session — anyone who needs them is by definition unable to sign in.
+
+---
+
 ## [1.0.1] - 2026-07-12
 
 ### Added
