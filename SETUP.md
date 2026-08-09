@@ -118,6 +118,8 @@ Use [Maskable.app](https://maskable.app) to ensure the icons look correct as ada
 | `DATABASE_URL` | Neon Postgres pooled connection string (server-only, keep secret) |
 | `BETTER_AUTH_SECRET` | Secret used to sign Better Auth sessions (server-only, keep secret) |
 | `BETTER_AUTH_URL` | The app's public origin, used for auth callbacks |
+| `RESEND_API_KEY` | Optional. Enables sending the password reset email (server-only, keep secret) |
+| `EMAIL_FROM` | Optional. Sender address for that email. Defaults to `Storegasm <onboarding@resend.dev>` |
 
 ---
 
