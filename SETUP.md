@@ -53,7 +53,10 @@ Edit `.env.local`:
 DATABASE_URL=postgresql://...   # the pooled connection string from Step 2
 BETTER_AUTH_SECRET=...          # generate with: openssl rand -base64 32
 BETTER_AUTH_URL=http://localhost:3000
+RESEND_API_KEY=...              # optional locally — see Step 6
 ```
+
+Leave `RESEND_API_KEY` out for local development if you like: without it, password reset emails are printed to the terminal running `npm run dev` instead of being sent, and the reset link works fine copied from there.
 
 ---
 
@@ -84,7 +87,28 @@ npm test
 
 ---
 
-## Step 6 — Deploy to Vercel
+## Step 6 — Set up email (required for password reset)
+
+The app sends exactly one email: the password reset link. Without a provider key, **"Forgot password?" appears to work but no email is sent** — the message is written to the server log instead. That's a deliberate fallback so a self-hosted instance stays recoverable, not a substitute for configuring this.
+
+1. Sign up at [resend.com](https://resend.com). The free tier (3,000 emails/month, 100/day) is far more than password resets need.
+2. **Sign up with the same email address you use to log into Storegasm.** This matters — see the note below.
+3. Go to **API Keys → Create API Key**. Give it **Sending access** only; it doesn't need full access.
+4. Copy the key (it starts with `re_` and is shown once) and set it as `RESEND_API_KEY`.
+
+### Why the signup address matters
+
+The default sender is `Storegasm <onboarding@resend.dev>`, Resend's shared domain. It requires no DNS setup, but it **only delivers to the email address that owns the Resend account**. For a single-user app where both addresses are yours, that's all you need.
+
+If the addresses differ — or you ever add a second user — verify your own domain in Resend (it supplies the DNS records) and set `EMAIL_FROM`:
+
+```env
+EMAIL_FROM=Storegasm <no-reply@yourdomain.com>
+```
+
+---
+
+## Step 7 — Deploy to Vercel
 
 1. Go to [vercel.com](https://vercel.com) and sign in.
 2. Click **Add New → Project**.
@@ -94,11 +118,15 @@ npm test
    - `DATABASE_URL` → your Neon pooled connection string
    - `BETTER_AUTH_SECRET` → the same secret you generated (or a new one for prod)
    - `BETTER_AUTH_URL` → your production URL (e.g. `https://storegasm.vercel.app`)
+   - `RESEND_API_KEY` → the key from Step 6
+   - `EMAIL_FROM` → only if you verified your own domain in Step 6
 6. Click **Deploy**.
+
+> **Changing an environment variable later requires a redeploy.** Vercel supplies env vars at build time, so a running deployment won't pick up a new value until you trigger a new deploy.
 
 ---
 
-## Step 7 — Replace placeholder icons
+## Step 8 — Replace placeholder icons
 
 The `/public/icons/` folder contains placeholder SVG files. Replace them with real PNG icons before shipping:
 
@@ -118,8 +146,8 @@ Use [Maskable.app](https://maskable.app) to ensure the icons look correct as ada
 | `DATABASE_URL` | Neon Postgres pooled connection string (server-only, keep secret) |
 | `BETTER_AUTH_SECRET` | Secret used to sign Better Auth sessions (server-only, keep secret) |
 | `BETTER_AUTH_URL` | The app's public origin, used for auth callbacks |
-| `RESEND_API_KEY` | Optional. Enables sending the password reset email (server-only, keep secret) |
-| `EMAIL_FROM` | Optional. Sender address for that email. Defaults to `Storegasm <onboarding@resend.dev>` |
+| `RESEND_API_KEY` | Resend key for the password reset email (server-only, keep secret). The app boots without it, but reset emails are only logged, never sent |
+| `EMAIL_FROM` | Sender address for that email. Defaults to `Storegasm <onboarding@resend.dev>`, which only delivers to the Resend account owner — set this once you've verified your own domain |
 
 ---
 
@@ -136,3 +164,12 @@ Use [Maskable.app](https://maskable.app) to ensure the icons look correct as ada
 
 **Search returns nothing for new items**
 → The `items_search_vector_trigger` didn't get applied. Re-run `npx drizzle-kit migrate` and check the `drizzle/0001_triggers.sql` migration was executed.
+
+**The password reset email never arrives**
+→ Check the server logs (Vercel → your deployment → **Logs**); the failure names itself:
+- `[email] RESEND_API_KEY is not set` — the variable is missing, or you set it but haven't redeployed since. The full email, reset link included, is in that same log entry, so you can still get back in.
+- `Resend rejected the message (HTTP 403)` — you're on the default `onboarding@resend.dev` sender and the recipient isn't the Resend account owner. Verify a domain and set `EMAIL_FROM`, or re-register Resend under your Storegasm login address (Step 6).
+- No email log at all — the address you typed has no account. The form deliberately says the same thing either way, so it can't be used to discover who's registered.
+
+**A reset link says it's invalid or expired**
+→ Links last one hour and work once. Request a fresh one. Note that resetting also signs you out everywhere, so other devices will ask you to sign in again.

@@ -6,6 +6,28 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
+# Setup-affecting changes
+
+**If a change requires the owner to do something by hand, SETUP.md gets a numbered step — not just a row in the environment variable reference table.**
+
+That table documents what a variable *is*. It does not tell someone how to obtain the value, and a reader following the guide top to bottom never learns they were supposed to. SETUP.md's contract is its own first line: *the manual steps you need to complete before the app will run end-to-end.*
+
+This applies to a new environment variable, a third-party account, a DNS record, a migration that isn't picked up by `drizzle-kit migrate`, or anything else the code cannot do for itself.
+
+The step must answer:
+
+- **How do I get this value?** Name the provider, the exact screen, the plan tier if it's a paid service.
+- **What decides whether it actually works?** Sender restrictions, allowed origins, region pinning, free-tier limits — the constraint that turns a correctly-set value into a silent failure.
+- **When does it take effect?** If a redeploy or restart is needed for the change to be picked up, say so.
+
+Then add a **Troubleshooting** entry keyed on the symptom the owner will actually see ("the email never arrives"), not the cause they'd have to already know ("Resend rejected the message"). Point at the log line or error text that distinguishes the cases.
+
+**Never label something "Optional" when a user-facing feature silently fails without it.** Optional-to-boot is not optional. State which feature degrades and how it degrades — a fallback that keeps the app running is worth documenting, but it is not a substitute for the real setup.
+
+The test: could the owner follow SETUP.md start to finish and end up with the feature working, without asking a question? If the answer lives only in a chat reply or a commit message, it is not documented.
+
+---
+
 # Versioning workflow
 
 **Every meaningful code change must include a version bump and a CHANGELOG entry.**
