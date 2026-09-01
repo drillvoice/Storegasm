@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Plus } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems, useAllTags } from "@/hooks/useItems";
+import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
 import { Button } from "@/components/ui/button";
@@ -20,18 +21,24 @@ const ItemForm = dynamic(() =>
 const MoveItemDialog = dynamic(() =>
   import("@/components/items/MoveItemDialog").then((m) => m.MoveItemDialog)
 );
+const MoveSpaceDialog = dynamic(() =>
+  import("@/components/spaces/MoveSpaceDialog").then((m) => m.MoveSpaceDialog)
+);
 const ConfirmDialog = dynamic(() =>
   import("@/components/ui/confirm-dialog").then((m) => m.ConfirmDialog)
 );
 
 /**
- * Dashboard page — displays the full space tree and unassigned items.
+ * Dashboard page — the space tree and unassigned items of the environment
+ * currently in scope.
  *
  * All mutations go through the useSpaces and useItems hooks which handle
  * refresh after each change.
  */
 export default function DashboardPage() {
-  const { spaces, loading, addSpace, editSpace, removeSpace } = useSpaces();
+  const { environment } = useActiveEnvironment();
+  const { spaces, loading, addSpace, editSpace, moveSpaceTo, removeSpace } =
+    useSpaces();
   const { items: unassigned, addItem, editItem, removeItem } = useItems(null);
   const { tags: allTags } = useAllTags();
 
@@ -44,9 +51,11 @@ export default function DashboardPage() {
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  // Move dialog state
+  // Move dialog state — one for items, one for whole spaces
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [movingItem, setMovingItem] = useState<Item | null>(null);
+  const [moveSpaceOpen, setMoveSpaceOpen] = useState(false);
+  const [movingSpace, setMovingSpace] = useState<SpaceNode | null>(null);
 
   // Confirm dialog state — one dialog handles both space and item deletes
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -75,6 +84,11 @@ export default function DashboardPage() {
     setEditingSpace(node);
     setDefaultParentId(null);
     setSpaceFormOpen(true);
+  }
+
+  function openMoveSpace(node: SpaceNode) {
+    setMovingSpace(node);
+    setMoveSpaceOpen(true);
   }
 
   function handleDeleteSpace(node: SpaceNode) {
@@ -133,7 +147,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Your spaces</h1>
+        <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight">
+          {environment?.name ?? "Your spaces"}
+        </h1>
         <Button onClick={openAddRoot} size="sm">
           <Plus className="mr-2 h-4 w-4" />
           Add space
@@ -151,6 +167,7 @@ export default function DashboardPage() {
             onAddRoot={openAddRoot}
             onAddChild={openAddChild}
             onEdit={openEditSpace}
+            onMove={openMoveSpace}
             onDelete={handleDeleteSpace}
           />
 
@@ -209,6 +226,13 @@ export default function DashboardPage() {
         item={movingItem}
         allSpaces={spaces}
         onMove={handleMoveItem}
+      />
+
+      <MoveSpaceDialog
+        open={moveSpaceOpen}
+        onOpenChange={setMoveSpaceOpen}
+        space={movingSpace}
+        onMove={moveSpaceTo}
       />
 
       <ConfirmDialog

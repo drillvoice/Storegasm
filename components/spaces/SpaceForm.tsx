@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { flattenSpaces } from "@/lib/utils";
+import { collectSubtreeIds, flattenSpaces } from "@/lib/utils";
 import type { SpaceNode } from "@/lib/types";
 
 interface SpaceFormProps {
@@ -100,25 +100,8 @@ export function SpaceForm({
     }
   }
 
-  // Collect the IDs of the space being edited and all its descendants so they
-  // can be excluded from the parent selector — selecting any of them would
-  // create a cycle in the tree.
-  function collectSubtreeIds(nodes: SpaceNode[], targetId: string): Set<string> {
-    const ids = new Set<string>();
-    const collect = (node: SpaceNode) => {
-      ids.add(node.id);
-      node.children.forEach(collect);
-    };
-    const find = (nodes: SpaceNode[]) => {
-      for (const n of nodes) {
-        if (n.id === targetId) { collect(n); return; }
-        find(n.children);
-      }
-    };
-    find(nodes);
-    return ids;
-  }
-
+  // Exclude the space being edited and its descendants from the parent
+  // selector — selecting any of them would create a cycle in the tree.
   const excluded = initialValues?.id
     ? collectSubtreeIds(allSpaces, initialValues.id)
     : new Set<string>();

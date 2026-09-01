@@ -64,7 +64,9 @@ npm install
 npx drizzle-kit migrate
 ```
 
-This creates the auth tables (user, session, account, verification), the app tables (spaces, items), and the full-text-search triggers. Migrations live in `drizzle/` and are generated from `lib/db/schema.ts`.
+This creates the auth tables (user, session, account, verification), the app tables (environments, spaces, items), and the full-text-search triggers. Migrations live in `drizzle/` and are generated from `lib/db/schema.ts`.
+
+Upgrading an existing database from before v2.0.0? The `0002_environments` migration adds environments and backfills every existing space and item into a default one named "My Home", so nothing needs to be moved by hand.
 
 ---
 

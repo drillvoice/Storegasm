@@ -8,6 +8,7 @@ function makeNode(overrides: Partial<SpaceNode> = {}): SpaceNode {
   return {
     id: "node-1",
     user_id: "user-1",
+    environment_id: "env-1",
     name: "Bedroom",
     description: null,
     parent_id: null,

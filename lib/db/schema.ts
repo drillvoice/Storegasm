@@ -4,9 +4,17 @@
  * Two groups of tables:
  *  - Better Auth tables (user, session, account, verification) — shapes match
  *    what `npx @better-auth/cli generate` emits for the Drizzle adapter.
- *  - App tables (spaces, items) — ported from supabase/migrations 001/002.
- *    Per-user isolation is enforced in the data layer (every query filters by
- *    user_id from the server session); there are no RLS policies here.
+ *  - App tables (environments, spaces, items). Per-user isolation is enforced
+ *    in the data layer (every query filters by user_id from the server
+ *    session); there are no RLS policies here.
+ *
+ * An environment is a place that owns a space tree — a house, an office, a
+ * studio. environment_id is denormalised onto spaces AND items so every scoped
+ * query is a plain indexed filter rather than an ancestor walk. Two invariants
+ * are enforced in lib/db (Postgres can't express either without triggers):
+ * a space's parent is always in the same environment, and an item's
+ * environment always matches its space's (or, when unassigned, the environment
+ * it was created in).
  *
  * The items.search_vector column is trigger-maintained (see the custom SQL
  * migration) because array_to_string() is not immutable, which generated
@@ -121,6 +129,41 @@ export const verification = pgTable("verification", {
 // Timestamps use mode: "string" so rows serialize across the server-action
 // boundary and match the ISO-string fields in lib/types.ts.
 
+export const environments = pgTable(
+  "environments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    // Null means active. Archiving hides an environment from the switcher
+    // without destroying its contents — the soft alternative to deleting.
+    archived_at: timestamp("archived_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    created_at: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("environments_user_id_idx").on(t.user_id),
+    check(
+      "environments_name_length",
+      sql`char_length(name) > 0 AND char_length(name) <= 200`
+    ),
+    check(
+      "environments_description_length",
+      sql`description IS NULL OR char_length(description) <= 2000`
+    ),
+  ]
+);
+
 export const spaces = pgTable(
   "spaces",
   {
@@ -128,6 +171,9 @@ export const spaces = pgTable(
     user_id: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    environment_id: uuid("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
     parent_id: uuid("parent_id").references((): AnyPgColumn => spaces.id, {
@@ -145,6 +191,7 @@ export const spaces = pgTable(
   },
   (t) => [
     index("spaces_user_id_idx").on(t.user_id),
+    index("spaces_environment_id_idx").on(t.environment_id),
     index("spaces_parent_id_idx").on(t.parent_id),
     index("spaces_search_idx").using("gin", t.search_vector),
     check(
@@ -165,6 +212,9 @@ export const items = pgTable(
     user_id: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    environment_id: uuid("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
     space_id: uuid("space_id").references(() => spaces.id, {
       onDelete: "set null",
     }),
@@ -182,6 +232,7 @@ export const items = pgTable(
   },
   (t) => [
     index("items_user_id_idx").on(t.user_id),
+    index("items_environment_id_idx").on(t.environment_id),
     index("items_space_id_idx").on(t.space_id),
     index("items_tags_idx").using("gin", t.tags),
     index("items_search_idx").using("gin", t.search_vector),

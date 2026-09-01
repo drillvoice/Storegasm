@@ -1,16 +1,21 @@
 "use client";
 
-import { useState, use, useRef } from "react";
+import { useState, use, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Plus, ChevronRight, Home } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems, useAllTags } from "@/hooks/useItems";
+import { useUserId } from "@/hooks/useUserId";
+import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
 import { MoveItemDialog } from "@/components/items/MoveItemDialog";
+import { MoveSpaceDialog } from "@/components/spaces/MoveSpaceDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { fetchSpace } from "@/lib/actions/spaces";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { SpaceNode, Item } from "@/lib/types";
@@ -26,7 +31,9 @@ export default function SpacePage({
 }) {
   const { id } = use(params);
 
-  const { spaces, addSpace, editSpace, removeSpace } = useSpaces();
+  const userId = useUserId();
+  const { environmentId, setEnvironmentId } = useActiveEnvironment();
+  const { spaces, addSpace, editSpace, moveSpaceTo, removeSpace } = useSpaces();
   const { items, addItem, editItem, removeItem } = useItems(id);
   const { tags: allTags } = useAllTags();
 
@@ -57,6 +64,28 @@ export default function SpacePage({
   const currentNode = findNode(spaces, id);
   const breadcrumb = buildBreadcrumb(spaces, id);
 
+  // A link into another environment — a bookmark followed after the space was
+  // moved, or a search result from an "all environments" search. Rather than
+  // showing an empty page, look the space up (fetchSpace is not environment-
+  // scoped) and switch scope to wherever it actually lives.
+  const strayQuery = useQuery({
+    queryKey: ["space-environment", userId, id],
+    enabled: !!userId && !!environmentId && !currentNode,
+    queryFn: async () => {
+      const result = await fetchSpace(id);
+      if (result.error) throw new Error(result.error.message);
+      return result.data;
+    },
+  });
+
+  const strayEnvironmentId = strayQuery.data?.environment_id ?? null;
+
+  useEffect(() => {
+    if (!strayEnvironmentId) return;
+    if (strayEnvironmentId === environmentId) return;
+    setEnvironmentId(strayEnvironmentId);
+  }, [strayEnvironmentId, environmentId, setEnvironmentId]);
+
   // Space form state
   const [spaceFormOpen, setSpaceFormOpen] = useState(false);
   const [editingSpace, setEditingSpace] = useState<SpaceNode | null>(null);
@@ -66,9 +95,11 @@ export default function SpacePage({
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  // Move dialog state
+  // Move dialog state — one for items, one for whole spaces
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [movingItem, setMovingItem] = useState<Item | null>(null);
+  const [moveSpaceOpen, setMoveSpaceOpen] = useState(false);
+  const [movingSpace, setMovingSpace] = useState<SpaceNode | null>(null);
 
   // Confirm dialog state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -97,6 +128,11 @@ export default function SpacePage({
     setEditingSpace(node);
     setDefaultParentId(null);
     setSpaceFormOpen(true);
+  }
+
+  function openMoveSpace(node: SpaceNode) {
+    setMovingSpace(node);
+    setMoveSpaceOpen(true);
   }
 
   function handleDeleteSpace(node: SpaceNode) {
@@ -185,9 +221,22 @@ export default function SpacePage({
         </div>
         <div className="flex gap-2">
           {currentNode && (
-            <Button variant="outline" size="sm" onClick={() => openEditSpace(currentNode)}>
-              Edit
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openEditSpace(currentNode)}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openMoveSpace(currentNode)}
+              >
+                Move
+              </Button>
+            </>
           )}
           <Button size="sm" onClick={openAddChild}>
             <Plus className="mr-1 h-4 w-4" />
@@ -203,6 +252,7 @@ export default function SpacePage({
           onAddRoot={openAddChild}
           onAddChild={openAddNestedChild}
           onEdit={openEditSpace}
+          onMove={openMoveSpace}
           onDelete={handleDeleteSpace}
         />
       )}
@@ -265,6 +315,13 @@ export default function SpacePage({
         item={movingItem}
         allSpaces={spaces}
         onMove={handleMoveItem}
+      />
+
+      <MoveSpaceDialog
+        open={moveSpaceOpen}
+        onOpenChange={setMoveSpaceOpen}
+        space={movingSpace}
+        onMove={moveSpaceTo}
       />
 
       <ConfirmDialog
