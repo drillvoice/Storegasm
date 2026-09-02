@@ -33,6 +33,12 @@ interface ItemFormProps {
   defaultSpaceId?: string | null;
   /** All spaces for the assignment dropdown. */
   allSpaces: SpaceNode[];
+  /**
+   * The item's current space when it isn't in `allSpaces` — an item in another
+   * environment, surfaced by an all-environments search. Without it the
+   * dropdown would show "Unassigned" for an item that is in fact filed away.
+   */
+  extraSpaceOption?: { id: string; label: string } | null;
   /** All existing tags across the user's items, used for autocomplete suggestions. */
   existingTags?: string[];
   onSubmit: (values: {
@@ -54,6 +60,7 @@ interface ItemFormProps {
  * @param initialValues - Pre-fills the form for edit mode.
  * @param defaultSpaceId - Pre-selects a space when adding from a space page.
  * @param allSpaces - Full list of spaces for the assignment dropdown.
+ * @param extraSpaceOption - The item's own space, when it lies outside allSpaces.
  * @param onSubmit - Async submission handler; returns an error string or null.
  */
 export function ItemForm({
@@ -62,6 +69,7 @@ export function ItemForm({
   initialValues,
   defaultSpaceId,
   allSpaces,
+  extraSpaceOption,
   existingTags,
   onSubmit,
 }: ItemFormProps) {
@@ -159,7 +167,11 @@ export function ItemForm({
     }
   }
 
-  const flatSpaces = flattenSpaces(allSpaces);
+  const spaceOptions = flattenSpaces(allSpaces);
+  const flatSpaces =
+    extraSpaceOption && !spaceOptions.some((s) => s.id === extraSpaceOption.id)
+      ? [extraSpaceOption, ...spaceOptions]
+      : spaceOptions;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

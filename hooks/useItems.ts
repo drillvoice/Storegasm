@@ -12,6 +12,7 @@ import {
   fetchAllTags,
 } from "@/lib/actions/items";
 import { useUserId } from "@/hooks/useUserId";
+import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import type {
   Item,
   ItemWithSpace,
@@ -20,37 +21,42 @@ import type {
 } from "@/lib/types";
 
 /**
- * Hook for managing items within a specific space.
+ * Hook for managing items within a specific space, scoped to the environment
+ * currently in scope.
  *
- * Pass `spaceId: null` to fetch unassigned items.
+ * Pass `spaceId: null` to fetch that environment's unassigned items.
  */
 export function useItems(spaceId: string | null) {
   const userId = useUserId();
+  const { environmentId } = useActiveEnvironment();
   const queryClient = useQueryClient();
-  const key = ["items", userId, spaceId ?? "null"];
+  const key = ["items", userId, environmentId, spaceId ?? "null"];
 
   const query = useQuery({
     queryKey: key,
-    enabled: !!userId,
+    enabled: !!userId && !!environmentId,
     queryFn: async () => {
       const result =
         spaceId === null
-          ? await fetchUnassignedItems()
-          : await fetchItemsBySpace(spaceId);
+          ? await fetchUnassignedItems(environmentId!)
+          : await fetchItemsBySpace(environmentId!, spaceId);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
   });
 
   function invalidate() {
-    // Item lists for other spaces and the tag list may also be affected.
+    // Item lists for other spaces and the tag list may also be affected — and
+    // an item moved into another environment's space leaves this one, so
+    // invalidate by prefix rather than for this environment alone.
     queryClient.invalidateQueries({ queryKey: ["items", userId] });
     queryClient.invalidateQueries({ queryKey: ["tags", userId] });
+    queryClient.invalidateQueries({ queryKey: ["search", userId] });
   }
 
   const addMutation = useMutation({
     mutationFn: async (payload: CreateItemPayload) => {
-      const result = await createItem(payload);
+      const result = await createItem(environmentId!, payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -64,6 +70,7 @@ export function useItems(spaceId: string | null) {
         const optimistic: Item = {
           id: `opt-${crypto.randomUUID()}`,
           user_id: userId!,
+          environment_id: environmentId!,
           name: payload.name,
           description: payload.description ?? null,
           space_id: targetSpace,
@@ -169,7 +176,7 @@ export function useItems(spaceId: string | null) {
 
   return {
     items: query.data ?? [],
-    loading: !userId || query.isPending,
+    loading: !userId || !environmentId || query.isPending,
     error: query.error ? (query.error as Error).message : null,
     refresh,
     addItem,
@@ -179,22 +186,27 @@ export function useItems(spaceId: string | null) {
 }
 
 /**
- * Hook that returns all distinct tags used across the user's items.
+ * Hook that returns all distinct tags used across the items in the environment
+ * currently in scope.
  */
 export function useAllTags() {
   const userId = useUserId();
+  const { environmentId } = useActiveEnvironment();
 
   const query = useQuery({
-    queryKey: ["tags", userId],
-    enabled: !!userId,
+    queryKey: ["tags", userId, environmentId],
+    enabled: !!userId && !!environmentId,
     queryFn: async () => {
-      const result = await fetchAllTags();
+      const result = await fetchAllTags(environmentId!);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
   });
 
-  return { tags: query.data ?? [], loading: !userId || query.isPending };
+  return {
+    tags: query.data ?? [],
+    loading: !userId || !environmentId || query.isPending,
+  };
 }
 
 // Stable fallback so consumers that compare results by reference (e.g. the
@@ -204,10 +216,14 @@ const NO_RESULTS: ItemWithSpace[] = [];
 /**
  * Hook for full-text searching items across all spaces.
  *
+ * Scoped to the environment currently in scope unless `allEnvironments` is
+ * set, which is how you answer "is it still at the old place?" mid-move.
+ *
  * Debounces the query by 300 ms before firing to avoid thrashing.
  */
-export function useItemSearch(query: string) {
+export function useItemSearch(query: string, allEnvironments = false) {
   const userId = useUserId();
+  const { environmentId } = useActiveEnvironment();
   const trimmed = query.trim();
   const [debounced, setDebounced] = useState(trimmed);
 
@@ -216,11 +232,13 @@ export function useItemSearch(query: string) {
     return () => clearTimeout(timer);
   }, [trimmed]);
 
+  const scope = allEnvironments ? null : environmentId;
+
   const q = useQuery({
-    queryKey: ["search", userId, debounced],
-    enabled: !!userId && !!debounced,
+    queryKey: ["search", userId, scope ?? "all", debounced],
+    enabled: !!userId && !!debounced && (allEnvironments || !!environmentId),
     queryFn: async () => {
-      const result = await searchItems(debounced);
+      const result = await searchItems(scope, debounced);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { EnvironmentProvider } from "@/components/EnvironmentProvider";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 
@@ -12,6 +13,9 @@ const ONE_DAY = 1000 * 60 * 60 * 24;
  * cache to localStorage so return visits render instantly (stale-while-
  * revalidate). The `buster` is the app version, so a deploy invalidates any
  * cache written by an older, possibly-incompatible build.
+ *
+ * EnvironmentProvider sits inside it, since the environment list — which
+ * decides what everything else is scoped to — is itself a query.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -44,7 +48,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         buster: process.env.NEXT_PUBLIC_APP_VERSION ?? "dev",
       }}
     >
-      {children}
+      <EnvironmentProvider>{children}</EnvironmentProvider>
     </PersistQueryClientProvider>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
+import { EnvironmentSwitcher } from "@/components/environments/EnvironmentSwitcher";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Search } from "lucide-react";
@@ -12,7 +13,8 @@ import { Search } from "lucide-react";
  * Authenticated app shell layout.
  *
  * Verifies the user session server-side and redirects to /login if no session
- * exists. Renders the top nav (search link + sign-out) around all child pages.
+ * exists. Renders the top nav (environment switcher + search link + sign-out)
+ * around all child pages.
  */
 export default async function AppLayout({
   children,
@@ -27,12 +29,18 @@ export default async function AppLayout({
     <AppShell>
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4">
-            <Link href="/dashboard" className="font-semibold tracking-tight">
-              Storegasm
-            </Link>
+          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-4">
+            <div className="flex min-w-0 items-center gap-1">
+              <Link
+                href="/dashboard"
+                className="hidden font-semibold tracking-tight sm:block"
+              >
+                Storegasm
+              </Link>
+              <EnvironmentSwitcher />
+            </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/search">
                   <Search className="mr-2 h-4 w-4" />

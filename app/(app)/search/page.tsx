@@ -1,28 +1,53 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Search } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Globe, Search } from "lucide-react";
 import { useItemSearch, useAllTags } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
+import { useUserId } from "@/hooks/useUserId";
+import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
 import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateItem, deleteItem } from "@/lib/actions/items";
 import type { ItemWithSpace, Item } from "@/lib/types";
 
 /**
- * Search page — full-text search across all items.
+ * Search page — full-text search across the items in scope.
+ *
+ * Scoped to the current environment by default, with a toggle to span every
+ * one: mid-move, "is the drill still at the old place?" is exactly the
+ * question you need answered.
  *
  * Uses a debounced Postgres tsvector query (via `useItemSearch`) so results
  * update as the user types without hammering the database.
  */
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const { results: searchResults, loading, error } = useItemSearch(query);
+  const [allEnvironments, setAllEnvironments] = useState(false);
+  const {
+    results: searchResults,
+    loading,
+    error,
+  } = useItemSearch(query, allEnvironments);
   const { spaces } = useSpaces();
   const { tags: allTags } = useAllTags();
+  const { environment, environments, environmentId } = useActiveEnvironment();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+
+  // This page calls the item actions directly rather than through useItems, so
+  // it has to invalidate the caches those mutations affect itself — otherwise
+  // the dashboard keeps showing an item edited or deleted from here.
+  function invalidateItemCaches() {
+    queryClient.invalidateQueries({ queryKey: ["items", userId] });
+    queryClient.invalidateQueries({ queryKey: ["tags", userId] });
+    queryClient.invalidateQueries({ queryKey: ["search", userId] });
+  }
 
   // Local mirror of search results — updated optimistically on edit/delete
   // so the list reflects mutations without waiting for the debounced re-fetch.
@@ -61,6 +86,7 @@ export default function SearchPage() {
     setResults((prev) =>
       prev.map((r) => r.id === itemId ? { ...r, space_id: spaceId, space: null, space_path: null } : r)
     );
+    invalidateItemCaches();
     return null;
   }
 
@@ -70,6 +96,7 @@ export default function SearchPage() {
       const result = await deleteItem(item.id);
       if (!result.error) {
         setResults((prev) => prev.filter((r) => r.id !== item.id));
+        invalidateItemCaches();
       }
     };
     setConfirmOpen(true);
@@ -87,12 +114,46 @@ export default function SearchPage() {
     setResults((prev) =>
       prev.map((r) => (r.id === editingItem.id ? { ...r, ...values } : r))
     );
+    invalidateItemCaches();
     return null;
+  }
+
+  // An all-environments search can surface an item filed somewhere the active
+  // environment's space list doesn't contain, so hand the form that one space
+  // explicitly rather than letting it read as unassigned.
+  const editingResult = results.find((r) => r.id === editingItem?.id) ?? null;
+  const extraSpaceOption =
+    editingResult &&
+    editingResult.space_id &&
+    editingResult.environment_id !== environmentId
+      ? { id: editingResult.space_id, label: resultPath(editingResult) ?? "" }
+      : null;
+
+  // When the search spans every environment, the place is the part of the
+  // breadcrumb that actually disambiguates two identically-named rooms.
+  function resultPath(item: ItemWithSpace): string | null {
+    if (!allEnvironments) return item.space_path;
+    const place = item.environment?.name;
+    if (!place) return item.space_path;
+    return item.space_path ? `${place} › ${item.space_path}` : place;
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Search</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold tracking-tight">Search</h1>
+        {environments.length > 1 && (
+          <Button
+            variant={allEnvironments ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={allEnvironments}
+            onClick={() => setAllEnvironments((v) => !v)}
+          >
+            <Globe className="mr-2 h-4 w-4" />
+            All environments
+          </Button>
+        )}
+      </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -127,7 +188,7 @@ export default function SearchPage() {
             <ItemCard
               key={item.id}
               item={item}
-              spacePath={item.space_path}
+              spacePath={resultPath(item)}
               onEdit={openEditItem}
               onMove={openMoveItem}
               onDelete={handleDeleteItem}
@@ -139,7 +200,13 @@ export default function SearchPage() {
       {!query.trim() && (
         <div className="py-12 text-center text-muted-foreground">
           <Search className="mx-auto mb-3 h-10 w-10" />
-          <p>Start typing to find items across all your spaces.</p>
+          <p>
+            {allEnvironments
+              ? "Start typing to find items across every environment."
+              : `Start typing to find items across ${
+                  environment ? environment.name : "your spaces"
+                }.`}
+          </p>
         </div>
       )}
 
@@ -148,6 +215,7 @@ export default function SearchPage() {
         onOpenChange={setItemFormOpen}
         initialValues={editingItem ?? undefined}
         allSpaces={spaces}
+        extraSpaceOption={extraSpaceOption}
         existingTags={allTags}
         onSubmit={handleItemSubmit}
       />

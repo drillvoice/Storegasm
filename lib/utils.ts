@@ -22,3 +22,31 @@ export function flattenSpaces(
     ...flattenSpaces(n.children, depth + 1),
   ]);
 }
+
+/**
+ * Collects the IDs of a space and all its descendants.
+ *
+ * Used to exclude a subtree from destination pickers — a space can't be moved
+ * inside itself or anything it contains.
+ */
+export function collectSubtreeIds(
+  nodes: SpaceNode[],
+  targetId: string
+): Set<string> {
+  const ids = new Set<string>();
+  const collect = (node: SpaceNode) => {
+    ids.add(node.id);
+    node.children.forEach(collect);
+  };
+  const find = (candidates: SpaceNode[]) => {
+    for (const n of candidates) {
+      if (n.id === targetId) {
+        collect(n);
+        return;
+      }
+      find(n.children);
+    }
+  };
+  find(nodes);
+  return ids;
+}

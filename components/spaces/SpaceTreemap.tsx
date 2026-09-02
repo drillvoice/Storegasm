@@ -2,7 +2,16 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, MoreVertical, Pencil, Trash2, FolderPlus, Folder, X } from "lucide-react";
+import {
+  Plus,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  FolderPlus,
+  Folder,
+  MoveRight,
+  X,
+} from "lucide-react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +81,7 @@ interface SpaceTreemapProps {
   onAddRoot: () => void;
   onAddChild: (parentId: string) => void;
   onEdit: (node: SpaceNode) => void;
+  onMove: (node: SpaceNode) => void;
   onDelete: (node: SpaceNode) => void;
 }
 
@@ -80,6 +90,7 @@ export function SpaceTreemap({
   onAddRoot,
   onAddChild,
   onEdit,
+  onMove,
   onDelete,
 }: SpaceTreemapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -242,6 +253,16 @@ export function SpaceTreemap({
                       >
                         <Pencil className="h-4 w-4" />
                         Edit
+                      </button>
+                      <button
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onMove(tile.space);
+                        }}
+                      >
+                        <MoveRight className="h-4 w-4" />
+                        Move to…
                       </button>
                       <button
                         className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-destructive hover:bg-accent"

@@ -6,12 +6,15 @@ import {
   createSpace,
   updateSpace,
   deleteSpace,
+  moveSpace,
 } from "@/lib/actions/spaces";
 import { useUserId } from "@/hooks/useUserId";
+import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import type {
   SpaceNode,
   CreateSpacePayload,
   UpdateSpacePayload,
+  MoveSpacePayload,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -79,19 +82,31 @@ interface UseSpacesResult {
     spaceId: string,
     payload: UpdateSpacePayload
   ) => Promise<string | null>;
+  moveSpaceTo: (
+    spaceId: string,
+    payload: MoveSpacePayload
+  ) => Promise<string | null>;
   removeSpace: (spaceId: string) => Promise<string | null>;
 }
 
+/**
+ * Hook for the space tree of the environment currently in scope.
+ *
+ * Trees from different environments are cached separately (the environment id
+ * is part of the query key), so switching between a house and a workplace is
+ * instant after the first visit to each.
+ */
 export function useSpaces(): UseSpacesResult {
   const userId = useUserId();
+  const { environmentId } = useActiveEnvironment();
   const queryClient = useQueryClient();
-  const key = ["spaces", userId];
+  const key = ["spaces", userId, environmentId];
 
   const query = useQuery({
     queryKey: key,
-    enabled: !!userId,
+    enabled: !!userId && !!environmentId,
     queryFn: async () => {
-      const result = await fetchSpaceTree();
+      const result = await fetchSpaceTree(environmentId!);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -99,7 +114,7 @@ export function useSpaces(): UseSpacesResult {
 
   const addMutation = useMutation({
     mutationFn: async (payload: CreateSpacePayload) => {
-      const result = await createSpace(payload);
+      const result = await createSpace(environmentId!, payload);
       if (result.error) throw new Error(result.error.message);
       return result.data;
     },
@@ -110,6 +125,7 @@ export function useSpaces(): UseSpacesResult {
       const optimistic: SpaceNode = {
         id: `opt-${crypto.randomUUID()}`,
         user_id: userId!,
+        environment_id: environmentId!,
         name: payload.name,
         description: payload.description ?? null,
         parent_id: payload.parent_id ?? null,
@@ -149,6 +165,37 @@ export function useSpaces(): UseSpacesResult {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["spaces", userId] });
+    },
+  });
+
+  // Moving a space to another environment takes its whole subtree and every
+  // item inside it. Optimistically it just disappears from this tree; the
+  // destination tree is refetched.
+  const moveMutation = useMutation({
+    mutationFn: async (vars: { spaceId: string; payload: MoveSpacePayload }) => {
+      const result = await moveSpace(vars.spaceId, vars.payload);
+      if (result.error) throw new Error(result.error.message);
+    },
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<SpaceNode[]>(key);
+      if (vars.payload.environment_id !== environmentId) {
+        queryClient.setQueryData<SpaceNode[]>(key, (old) =>
+          pruneNode(old ?? [], vars.spaceId)
+        );
+      }
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(key, ctx.previous);
+    },
+    onSettled: () => {
+      // Both the source and destination environments changed, so invalidate
+      // by prefix rather than for this environment alone.
+      queryClient.invalidateQueries({ queryKey: ["spaces", userId] });
+      queryClient.invalidateQueries({ queryKey: ["items", userId] });
+      queryClient.invalidateQueries({ queryKey: ["tags", userId] });
+      queryClient.invalidateQueries({ queryKey: ["search", userId] });
     },
   });
 
@@ -199,6 +246,19 @@ export function useSpaces(): UseSpacesResult {
     }
   }
 
+  async function moveSpaceTo(
+    spaceId: string,
+    payload: MoveSpacePayload
+  ): Promise<string | null> {
+    if (!userId) return "Not authenticated";
+    try {
+      await moveMutation.mutateAsync({ spaceId, payload });
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
+
   async function removeSpace(spaceId: string): Promise<string | null> {
     if (!userId) return "Not authenticated";
     try {
@@ -210,16 +270,17 @@ export function useSpaces(): UseSpacesResult {
   }
 
   async function refresh(): Promise<void> {
-    await queryClient.invalidateQueries({ queryKey: ["spaces", userId] });
+    await queryClient.invalidateQueries({ queryKey: key });
   }
 
   return {
     spaces: query.data ?? [],
-    loading: !userId || query.isPending,
+    loading: !userId || !environmentId || query.isPending,
     error: query.error ? (query.error as Error).message : null,
     refresh,
     addSpace,
     editSpace,
+    moveSpaceTo,
     removeSpace,
   };
 }

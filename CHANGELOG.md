@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-09-01
+
+### Added
+- **Environments.** Your spaces now live in a named place — a house, an office, a studio — and you can have more than one. A switcher in the header decides which one you're looking at; the dashboard, search, the unassigned bucket and every space picker follow it. Existing accounts get a single environment called "My Home" holding everything they already had.
+- **Move a space to another environment.** "Move to…" on any space takes it, everything nested inside it, and all its items to another environment in one operation — the "this box of books comes with me to the new house" move. Moving an item into a space in another environment moves the item there too.
+- **Archive an environment.** The house you moved out of drops off the switcher but keeps its contents, so "where did that live before?" stays answerable. Archived environments can be restored, and deleting one tells you how many spaces and items it would destroy first.
+- **Search across every environment.** Search is scoped to the environment you're in, with an "All environments" toggle that spans the lot and labels each result with the place it's in — how you check whether something is still at the old address.
+
+### Changed
+- **Breaking (data).** `spaces` and `items` each gain a required `environment_id`. The `0002_environments` migration creates the table and backfills every existing row, so no data is lost, but the schema and the server action signatures both change — an older build will not run against a migrated database.
+- The dashboard heading now names the environment you're in rather than reading "Your spaces".
+
+### Fixed
+- Editing, moving or deleting an item from the search page now refreshes the dashboard and space pages. Previously those mutations bypassed the cache invalidation and left stale data on screen until a reload.
+
+---
+
 ## [1.1.0] - 2026-08-09
 
 ### Added

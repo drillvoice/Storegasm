@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Signs the user out client-side, clears the React Query cache (in-memory and
- * its persisted localStorage copy) so no inventory data is left behind on a
- * shared device, then returns to the login page.
+ * its persisted localStorage copy) and the remembered environment so no
+ * inventory data is left behind on a shared device, then returns to the login
+ * page.
  */
 export function SignOutButton() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export function SignOutButton() {
     queryClient.clear();
     try {
       localStorage.removeItem("sg:rq");
+      localStorage.removeItem("sg:env");
     } catch {
       // localStorage unavailable — nothing to clear.
     }
