@@ -6,6 +6,21 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
+# Never ship a manual step
+
+**The maintainer will not run manual operational steps, and a change that depends on one is not finished.** Assume nobody reads release notes, opens a SQL console, or remembers a follow-up command.
+
+So: anything a change needs done to a live deployment — database migrations and backfills, data repairs, cache invalidation, seeding — must run automatically as part of `npm run build`, which is what the deploy host runs. Migrations already do, via `scripts/migrate.js`; put new automation alongside it rather than inventing a second mechanism.
+
+Two corollaries:
+
+- **Don't write instructions where you could write code.** Adding a step to SETUP.md is not a substitute for automating it. SETUP.md documents first-time local setup, which is genuinely manual; it is not a place to park deploy-time work.
+- **When something truly can't be automated, fail loudly.** Break the build, or surface an error in the UI that names the exact command that fixes it. Silence that depends on someone noticing is the failure mode to design out.
+
+This rule exists because v2.0.0 shipped the environments feature with its migration as a manual step in SETUP.md. Nobody ran it, so the feature was dead on arrival in production — the header stuck on "No environment" and every attempt to create one failed against a table that did not exist. The code was correct the whole time.
+
+---
+
 # Versioning workflow
 
 **Every meaningful code change must include a version bump and a CHANGELOG entry.**
