@@ -36,7 +36,7 @@ const ConfirmDialog = dynamic(() =>
  * refresh after each change.
  */
 export default function DashboardPage() {
-  const { environment } = useActiveEnvironment();
+  const { environment, error: environmentError } = useActiveEnvironment();
   const { spaces, loading, addSpace, editSpace, moveSpaceTo, removeSpace } =
     useSpaces();
   const { items: unassigned, addItem, editItem, removeItem } = useItems(null);
@@ -156,7 +156,14 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      {loading ? (
+      {environmentError ? (
+        // Without an environment nothing below can be scoped, so say what went
+        // wrong instead of showing an empty tree or a spinner that never ends.
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <p className="font-medium">Couldn&apos;t load your environments</p>
+          <p className="mt-1 text-sm text-muted-foreground">{environmentError}</p>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-24">
           <p className="text-muted-foreground animate-pulse">Loading…</p>
         </div>

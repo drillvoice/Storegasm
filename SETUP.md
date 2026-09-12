@@ -61,10 +61,12 @@ BETTER_AUTH_URL=http://localhost:3000
 
 ```bash
 npm install
-npx drizzle-kit migrate
+npm run db:migrate
 ```
 
 This creates the auth tables (user, session, account, verification), the app tables (environments, spaces, items), and the full-text-search triggers. Migrations live in `drizzle/` and are generated from `lib/db/schema.ts`.
+
+`npm run build` runs this same step first, so a deploy always applies pending migrations before the new code goes live — a build can't leave the database a version behind the app. It is skipped (not failed) when `DATABASE_URL` is unset, and the build fails loudly if a migration does.
 
 Upgrading an existing database from before v2.0.0? The `0002_environments` migration adds environments and backfills every existing space and item into a default one named "My Home", so nothing needs to be moved by hand.
 
@@ -134,7 +136,10 @@ Use [Maskable.app](https://maskable.app) to ensure the icons look correct as ada
 → `DATABASE_URL` is missing from `.env.local` (or from Vercel env vars in production).
 
 **Database errors on item/space creation**
-→ Make sure `npx drizzle-kit migrate` ran successfully — it must apply both the base DDL migration and the triggers migration.
+→ Make sure `npm run db:migrate` ran successfully — it must apply the base DDL migration, the triggers migration, and the environments migration.
+
+**"The database is missing tables or columns this version of the app needs"**
+→ Exactly that: the database is behind the deployed code. Run `npm run db:migrate` against it (or redeploy — the build does it). This is what a database still on the pre-v2.0.0 schema reports when the app asks it for environments.
 
 **Search returns nothing for new items**
-→ The `items_search_vector_trigger` didn't get applied. Re-run `npx drizzle-kit migrate` and check the `drizzle/0001_triggers.sql` migration was executed.
+→ The `items_search_vector_trigger` didn't get applied. Re-run `npm run db:migrate` and check the `drizzle/0001_triggers.sql` migration was executed.

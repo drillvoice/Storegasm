@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { describeDbError, toDbError } from "@/lib/db/errors";
 import { environments, items, spaces } from "@/lib/db/schema";
 import type {
   Environment,
@@ -20,10 +21,6 @@ const environmentColumns = {
   created_at: environments.created_at,
   updated_at: environments.updated_at,
 };
-
-function toDbError(e: unknown): { data: null; error: { message: string } } {
-  return { data: null, error: { message: (e as Error).message } };
-}
 
 /**
  * Fetches every environment belonging to a user, archived ones included.
@@ -101,7 +98,7 @@ export async function assertOwnedEnvironment(
     if (!rows[0]) return { error: { message: "Environment not found" } };
     return { error: null };
   } catch (e) {
-    return { error: { message: (e as Error).message } };
+    return { error: { message: describeDbError(e) } };
   }
 }
 

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * rather than on any one page.
  */
 export function EnvironmentSwitcher() {
-  const { environment, activeEnvironments, setEnvironmentId, loading } =
+  const { environment, activeEnvironments, setEnvironmentId, loading, error } =
     useActiveEnvironment();
   const { addEnvironment } = useEnvironments();
 
@@ -53,8 +53,13 @@ export function EnvironmentSwitcher() {
             aria-label="Switch environment"
           >
             <House className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">
-              {loading && !environment ? "…" : (environment?.name ?? "No environment")}
+            <span
+              className={cn("truncate", error && !environment && "text-destructive")}
+            >
+              {loading && !environment
+                ? "…"
+                : (environment?.name ??
+                  (error ? "Environment unavailable" : "No environment"))}
             </span>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           </Button>
