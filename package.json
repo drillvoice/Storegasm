@@ -1,10 +1,11 @@
 {
   "name": "storegasm",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/migrate.js && next build",
+    "db:migrate": "node scripts/migrate.js",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

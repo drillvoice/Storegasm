@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { toDbError } from "@/lib/db/errors";
 import { environments, items, spaces } from "@/lib/db/schema";
 import type {
   Item,
@@ -24,10 +25,6 @@ const itemColumns = {
   created_at: items.created_at,
   updated_at: items.updated_at,
 };
-
-function toDbError(e: unknown): { data: null; error: { message: string } } {
-  return { data: null, error: { message: (e as Error).message } };
-}
 
 /**
  * Looks up which environment a space is in.

@@ -16,6 +16,12 @@ interface EnvironmentContextValue {
   environmentId: string | null;
   setEnvironmentId: (environmentId: string) => void;
   loading: boolean;
+  /**
+   * Why the environment list could not be loaded, if it could not be. Nothing
+   * downstream can be scoped without it, so pages show this rather than an
+   * empty dashboard or a spinner that never resolves.
+   */
+  error: string | null;
 }
 
 const EnvironmentContext = createContext<EnvironmentContextValue | null>(null);
@@ -46,7 +52,7 @@ export function EnvironmentProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { environments, loading } = useEnvironments();
+  const { environments, loading, error } = useEnvironments();
   const [selectedId, setSelectedId] = useState<string | null>(readStoredId);
 
   // Resolve the selection against what actually exists: a remembered id can
@@ -84,6 +90,7 @@ export function EnvironmentProvider({
         environmentId: environment?.id ?? null,
         setEnvironmentId,
         loading,
+        error,
       }}
     >
       {children}

@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-09-12
+
+### Added
+- **Migrations run on build.** `npm run build` now applies any pending database migrations before building, so a deploy can no longer put new code in front of a database that is a version behind it. `npm run db:migrate` runs the same step on its own. With no `DATABASE_URL` set the step is skipped, not failed, so a build without a database still works.
+
+### Fixed
+- **Environments could not be created on a database that hadn't been migrated.** v2.0.0 shipped the environments tables as a manual migration step, so a deployment that missed it had a header stuck on "No environment" and a New environment form that failed on every attempt. The migration now runs as part of the build (above), and the failure is legible if it ever happens again (below).
+- Database errors no longer reach the screen as a wall of SQL. Drizzle reports a failed statement as "Failed query: insert into …" with the actual reason tucked away underneath; the data layer now unwraps it, so what you see is what the database said. A missing table or column — the signature of an unapplied migration — is reported as exactly that, with the command that fixes it.
+- A failure to load the environment list is now shown. The switcher reads "Environment unavailable" and the dashboard explains why, instead of silently showing "No environment" over an empty page while every scoped query waited for an environment that was never coming.
+
+---
+
 ## [2.0.0] - 2026-09-01
 
 ### Added
