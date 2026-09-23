@@ -152,7 +152,7 @@ export function SpaceForm({
               <SelectContent>
                 <SelectItem value="__none__">None (top-level)</SelectItem>
                 {flatSpaces.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} depth={s.depth}>
                     {s.label}
                   </SelectItem>
                 ))}

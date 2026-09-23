@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - 2026-09-23
+
+### Fixed
+- **Long location dropdowns can be scrolled.** The dropdown's height cap used Tailwind v3 syntax that Tailwind v4 silently ignores, so a long list of spaces ran off the bottom of the screen with no way to reach the rest. It is now capped to the space available (at most 20rem) and scrolls. This applies to every dropdown in the app.
+
+### Changed
+- **Nested spaces are indented under their parents** in the Location, Move to and Parent space dropdowns. The indentation was previously done with leading spaces, which the browser collapsed, so every space looked top-level.
+
 ## [2.1.0] - 2026-09-12
 
 ### Added
