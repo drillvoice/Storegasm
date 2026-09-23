@@ -173,7 +173,7 @@ export function MoveSpaceDialog({
                   Top level{targetEnvironment ? ` of ${targetEnvironment.name}` : ""}
                 </SelectItem>
                 {destinations.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} depth={s.depth}>
                     {s.label}
                   </SelectItem>
                 ))}

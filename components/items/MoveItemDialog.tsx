@@ -85,7 +85,7 @@ export function MoveItemDialog({
               <SelectContent>
                 <SelectItem value="__none__">Unassigned</SelectItem>
                 {flatSpaces.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} depth={s.depth}>
                     {s.label}
                   </SelectItem>
                 ))}

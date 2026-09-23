@@ -170,7 +170,7 @@ export function ItemForm({
   const spaceOptions = flattenSpaces(allSpaces);
   const flatSpaces =
     extraSpaceOption && !spaceOptions.some((s) => s.id === extraSpaceOption.id)
-      ? [extraSpaceOption, ...spaceOptions]
+      ? [{ ...extraSpaceOption, depth: 0 }, ...spaceOptions]
       : spaceOptions;
 
   return (
@@ -217,7 +217,7 @@ export function ItemForm({
               <SelectContent>
                 <SelectItem value="__none__">Unassigned</SelectItem>
                 {flatSpaces.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} depth={s.depth}>
                     {s.label}
                   </SelectItem>
                 ))}

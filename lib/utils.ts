@@ -12,13 +12,13 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-/** Flattens a SpaceNode tree into depth-indented options for a select dropdown. */
+/** Flattens a SpaceNode tree into select options, each carrying its nesting depth for indentation. */
 export function flattenSpaces(
   nodes: SpaceNode[],
   depth = 0
-): Array<{ id: string; label: string }> {
+): Array<{ id: string; label: string; depth: number }> {
   return nodes.flatMap((n) => [
-    { id: n.id, label: "  ".repeat(depth) + n.name },
+    { id: n.id, label: n.name, depth },
     ...flattenSpaces(n.children, depth + 1),
   ]);
 }
