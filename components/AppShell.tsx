@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { EnvironmentProvider } from "@/components/EnvironmentProvider";
+import { UserIdProvider } from "@/hooks/useUserId";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 
@@ -16,8 +17,16 @@ const ONE_DAY = 1000 * 60 * 60 * 24;
  *
  * EnvironmentProvider sits inside it, since the environment list — which
  * decides what everything else is scoped to — is itself a query.
+ *
+ * @param userId - The session user, resolved server-side by the (app) layout.
  */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  userId,
+  children,
+}: {
+  userId: string;
+  children: React.ReactNode;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -48,7 +57,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         buster: process.env.NEXT_PUBLIC_APP_VERSION ?? "dev",
       }}
     >
-      <EnvironmentProvider>{children}</EnvironmentProvider>
+      <UserIdProvider userId={userId}>
+        <EnvironmentProvider>{children}</EnvironmentProvider>
+      </UserIdProvider>
     </PersistQueryClientProvider>
   );
 }

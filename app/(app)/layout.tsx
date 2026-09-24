@@ -26,7 +26,7 @@ export default async function AppLayout({
   if (!session) redirect("/login");
 
   return (
-    <AppShell>
+    <AppShell userId={session.user.id}>
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-4">
