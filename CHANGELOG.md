@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.0] - 2026-09-24
+
+### Added
+- **Search matches as you type.** Each word you type now matches the start of a word, so "screw" finds "Screwdriver set" before you've finished typing it. Every word has to match.
+
+### Changed
+- Search is lighter on the database. Breadcrumbs are built from only the spaces above the matches, not from every space you have, and the tag list is de-duplicated by the database instead of in the app.
+- A space's page shows "Loading…" until the space is known, and a "This space doesn't exist" page for a space that's been deleted or a mistyped link. Before, it showed a heading reading "Space" above "No items in this space yet".
+
+### Fixed
+- Moving an item from the search page showed it as unassigned until the next search. It now shows its new location.
+
 ## [2.3.0] - 2026-09-24
 
 ### Changed
