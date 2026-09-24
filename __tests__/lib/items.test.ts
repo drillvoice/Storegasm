@@ -182,6 +182,21 @@ describe("searchItems", () => {
     expect(result.data![0]).not.toHaveProperty("search_vector");
   });
 
+  it("stops walking the breadcrumb if the parent chain loops", async () => {
+    h.state.resultsByTable.set(items, [
+      makeItem({ space_id: "a", space: { id: "a", name: "A" } }),
+    ]);
+    h.state.resultsByTable.set(spaces, [
+      { id: "a", name: "A", parent_id: "b" },
+      { id: "b", name: "B", parent_id: "a" },
+    ]);
+
+    const result = await searchItems(USER_ID, ENV_ID, "coats");
+
+    expect(result.error).toBeNull();
+    expect(result.data![0].space_path).toBe("B › A");
+  });
+
   it("labels each result with its environment when searching all of them", async () => {
     h.state.resultsByTable.set(items, [
       makeItem({ id: "item-1", space_id: null, space: null }),

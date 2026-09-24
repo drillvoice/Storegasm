@@ -4,8 +4,8 @@
  * Server actions for items.
  *
  * Each action resolves the authenticated user from the Better Auth session —
- * the userId is never accepted from the client. This is the app-level
- * replacement for the RLS policies the schema had on Supabase.
+ * the userId is never accepted from the client — and parses every argument it
+ * does accept against lib/validation.ts before it reaches the data layer.
  *
  * The environmentId, unlike the userId, IS supplied by the client: it is the
  * user's current scope selection, checked against the session user on every
@@ -14,10 +14,18 @@
  * item lives.
  */
 
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { assertOwnedEnvironment } from "@/lib/db/environments";
 import * as itemsDb from "@/lib/db/items";
+import { getSessionUserId, NOT_AUTHENTICATED } from "@/lib/session";
+import {
+  createItemInput,
+  environmentIdInput,
+  itemIdInput,
+  parseInput,
+  searchQueryInput,
+  spaceIdInput,
+  updateItemInput,
+} from "@/lib/validation";
 import type {
   Item,
   ItemWithSpace,
@@ -26,25 +34,21 @@ import type {
   DbResult,
 } from "@/lib/types";
 
-async function getSessionUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  return session?.user.id ?? null;
-}
-
-const NOT_AUTHENTICATED = {
-  data: null,
-  error: { message: "Not authenticated" },
-} as const;
-
 export async function fetchItemsBySpace(
   environmentId: string,
   spaceId: string
 ): Promise<DbResult<Item[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  // A malformed space id can't hold anything — answer with an empty list, as
+  // for any other unknown space, so a mangled URL shows an empty page.
+  const space = parseInput(spaceIdInput, spaceId);
+  if (space.error) return { data: [], error: null };
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return itemsDb.fetchItemsBySpace(userId, environmentId, spaceId);
+  return itemsDb.fetchItemsBySpace(userId, envId.data, space.data);
 }
 
 export async function fetchUnassignedItems(
@@ -52,9 +56,11 @@ export async function fetchUnassignedItems(
 ): Promise<DbResult<Item[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return itemsDb.fetchUnassignedItems(userId, environmentId);
+  return itemsDb.fetchUnassignedItems(userId, envId.data);
 }
 
 /** Pass a null environmentId to search across every environment. */
@@ -64,11 +70,15 @@ export async function searchItems(
 ): Promise<DbResult<ItemWithSpace[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  if (environmentId) {
-    const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput.nullable(), environmentId);
+  if (envId.error) return envId;
+  const q = parseInput(searchQueryInput, query);
+  if (q.error) return q;
+  if (envId.data) {
+    const owned = await assertOwnedEnvironment(userId, envId.data);
     if (owned.error) return { data: null, error: owned.error };
   }
-  return itemsDb.searchItems(userId, environmentId, query);
+  return itemsDb.searchItems(userId, envId.data, q.data);
 }
 
 export async function createItem(
@@ -77,9 +87,13 @@ export async function createItem(
 ): Promise<DbResult<Item>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const input = parseInput(createItemInput, payload);
+  if (input.error) return input;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return itemsDb.createItem(userId, environmentId, payload);
+  return itemsDb.createItem(userId, envId.data, input.data);
 }
 
 export async function updateItem(
@@ -88,13 +102,19 @@ export async function updateItem(
 ): Promise<DbResult<Item>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return itemsDb.updateItem(userId, itemId, payload);
+  const id = parseInput(itemIdInput, itemId);
+  if (id.error) return id;
+  const input = parseInput(updateItemInput, payload);
+  if (input.error) return input;
+  return itemsDb.updateItem(userId, id.data, input.data);
 }
 
 export async function deleteItem(itemId: string): Promise<DbResult<null>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return itemsDb.deleteItem(userId, itemId);
+  const id = parseInput(itemIdInput, itemId);
+  if (id.error) return id;
+  return itemsDb.deleteItem(userId, id.data);
 }
 
 export async function fetchAllTags(
@@ -102,7 +122,9 @@ export async function fetchAllTags(
 ): Promise<DbResult<string[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return itemsDb.fetchAllTags(userId, environmentId);
+  return itemsDb.fetchAllTags(userId, envId.data);
 }

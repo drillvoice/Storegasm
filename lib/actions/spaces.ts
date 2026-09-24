@@ -4,8 +4,8 @@
  * Server actions for spaces.
  *
  * Each action resolves the authenticated user from the Better Auth session —
- * the userId is never accepted from the client. This is the app-level
- * replacement for the RLS policies the schema had on Supabase.
+ * the userId is never accepted from the client — and parses every argument it
+ * does accept against lib/validation.ts before it reaches the data layer.
  *
  * The environmentId, unlike the userId, IS supplied by the client: it is the
  * user's current scope selection. Every action that takes one checks it
@@ -13,10 +13,17 @@
  * caller their own other environment.
  */
 
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { assertOwnedEnvironment } from "@/lib/db/environments";
 import * as spacesDb from "@/lib/db/spaces";
+import { getSessionUserId, NOT_AUTHENTICATED } from "@/lib/session";
+import {
+  createSpaceInput,
+  environmentIdInput,
+  moveSpaceInput,
+  parseInput,
+  spaceIdInput,
+  updateSpaceInput,
+} from "@/lib/validation";
 import type {
   Space,
   SpaceNode,
@@ -26,24 +33,16 @@ import type {
   DbResult,
 } from "@/lib/types";
 
-async function getSessionUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  return session?.user.id ?? null;
-}
-
-const NOT_AUTHENTICATED = {
-  data: null,
-  error: { message: "Not authenticated" },
-} as const;
-
 export async function fetchSpaceTree(
   environmentId: string
 ): Promise<DbResult<SpaceNode[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return spacesDb.fetchSpaceTree(userId, environmentId);
+  return spacesDb.fetchSpaceTree(userId, envId.data);
 }
 
 export async function fetchSpace(
@@ -51,7 +50,11 @@ export async function fetchSpace(
 ): Promise<DbResult<Space | null>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return spacesDb.fetchSpace(userId, spaceId);
+  const id = parseInput(spaceIdInput, spaceId);
+  // A malformed id can't name a space — answer "not found" like any other
+  // unknown id, so a mangled URL lands on the page's not-found state.
+  if (id.error) return { data: null, error: null };
+  return spacesDb.fetchSpace(userId, id.data);
 }
 
 export async function createSpace(
@@ -60,9 +63,13 @@ export async function createSpace(
 ): Promise<DbResult<Space>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const input = parseInput(createSpaceInput, payload);
+  if (input.error) return input;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return spacesDb.createSpace(userId, environmentId, payload);
+  return spacesDb.createSpace(userId, envId.data, input.data);
 }
 
 export async function updateSpace(
@@ -71,7 +78,11 @@ export async function updateSpace(
 ): Promise<DbResult<Space>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return spacesDb.updateSpace(userId, spaceId, payload);
+  const id = parseInput(spaceIdInput, spaceId);
+  if (id.error) return id;
+  const input = parseInput(updateSpaceInput, payload);
+  if (input.error) return input;
+  return spacesDb.updateSpace(userId, id.data, input.data);
 }
 
 /** Moves a space, its subtree, and its items into another environment. */
@@ -81,20 +92,26 @@ export async function moveSpace(
 ): Promise<DbResult<null>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, payload.environment_id);
+  const id = parseInput(spaceIdInput, spaceId);
+  if (id.error) return id;
+  const input = parseInput(moveSpaceInput, payload);
+  if (input.error) return input;
+  const owned = await assertOwnedEnvironment(userId, input.data.environment_id);
   if (owned.error) return { data: null, error: owned.error };
   return spacesDb.moveSpaceToEnvironment(
     userId,
-    spaceId,
-    payload.environment_id,
-    payload.parent_id
+    id.data,
+    input.data.environment_id,
+    input.data.parent_id
   );
 }
 
 export async function deleteSpace(spaceId: string): Promise<DbResult<null>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return spacesDb.deleteSpace(userId, spaceId);
+  const id = parseInput(spaceIdInput, spaceId);
+  if (id.error) return id;
+  return spacesDb.deleteSpace(userId, id.data);
 }
 
 export async function fetchChildSpaces(
@@ -103,7 +120,11 @@ export async function fetchChildSpaces(
 ): Promise<DbResult<Space[]>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  const owned = await assertOwnedEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const parent = parseInput(spaceIdInput.nullable(), parentId);
+  if (parent.error) return parent;
+  const owned = await assertOwnedEnvironment(userId, envId.data);
   if (owned.error) return { data: null, error: owned.error };
-  return spacesDb.fetchChildSpaces(userId, environmentId, parentId);
+  return spacesDb.fetchChildSpaces(userId, envId.data, parent.data);
 }

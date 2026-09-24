@@ -172,8 +172,12 @@ export async function searchItems(
     function buildPath(spaceId: string | null): string | null {
       if (!spaceId) return null;
       const parts: string[] = [];
+      // `seen` stops the walk if the parent chain ever loops back on itself;
+      // without it one bad row would hang every search that matched beneath it.
+      const seen = new Set<string>();
       let cur: SpaceRow | undefined = spaceMap.get(spaceId);
-      while (cur) {
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
         parts.unshift(cur.name);
         cur = cur.parent_id ? spaceMap.get(cur.parent_id) : undefined;
       }

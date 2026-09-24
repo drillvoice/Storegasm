@@ -68,6 +68,8 @@ This creates the auth tables (user, session, account, verification), the app tab
 
 `npm run build` runs this same step first, so a deploy always applies pending migrations before the new code goes live — a build can't leave the database a version behind the app. It is skipped (not failed) when `DATABASE_URL` is unset, and the build fails loudly if a migration does.
 
+Vercel **preview** builds skip it too, because by default they share production's `DATABASE_URL` — migrating there would apply an unmerged branch's schema to the production database. If your previews each get their own database (Neon's Vercel integration does this), set `MIGRATE_PREVIEWS=true` in the Preview environment to have them migrate as well.
+
 Upgrading an existing database from before v2.0.0? The `0002_environments` migration adds environments and backfills every existing space and item into a default one named "My Home", so nothing needs to be moved by hand.
 
 ---

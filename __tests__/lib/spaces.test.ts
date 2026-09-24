@@ -140,6 +140,28 @@ describe("fetchSpaceTree", () => {
     expect(result.data![0].children[0].id).toBe("child-1");
   });
 
+  it("surfaces spaces caught in a parent loop instead of dropping them", async () => {
+    // a → b → a: neither has a root above it.
+    const a = makeSpace({ id: "a", name: "A", parent_id: "b" });
+    const b = makeSpace({ id: "b", name: "B", parent_id: "a" });
+    const home = makeSpace({ id: "home", name: "Home" });
+    h.state.resultsByTable.set(spaces, [a, b, home]);
+
+    const result = await fetchSpaceTree(USER_ID, ENV_ID);
+
+    expect(result.error).toBeNull();
+    // Every space appears exactly once, and the loop is cut so the tree is
+    // finite (collecting it would recurse forever otherwise).
+    const ids: string[] = [];
+    const collect = (nodes: { id: string; children: typeof nodes }[]) =>
+      nodes.forEach((n) => {
+        ids.push(n.id);
+        collect(n.children);
+      });
+    collect(result.data!);
+    expect(ids.sort()).toEqual(["a", "b", "home"]);
+  });
+
   it("propagates database errors", async () => {
     h.state.error = new Error("DB error");
 
@@ -229,6 +251,29 @@ describe("updateSpace", () => {
 
     expect(result.error).toBeNull();
     expect(result.data?.parent_id).toBe("parent-1");
+  });
+
+  it("refuses to make a space its own parent", async () => {
+    const result = await updateSpace(USER_ID, "s-1", { parent_id: "s-1" });
+
+    expect(result.error?.message).toBe("A space cannot be its own parent");
+    expect(h.state.updated).toHaveLength(0);
+  });
+
+  it("refuses to re-parent a space into its own contents", async () => {
+    h.state.queueByTable.set(spaces, [
+      [makeSpace()],
+      [makeSpace({ id: "child-1", parent_id: "s-1" })],
+    ]);
+    // The recursive subtree lookup finds the new parent inside the subtree.
+    h.state.executeResult = [{ id: "child-1" }];
+
+    const result = await updateSpace(USER_ID, "s-1", { parent_id: "child-1" });
+
+    expect(result.error?.message).toBe(
+      "A space cannot be moved into its own contents"
+    );
+    expect(h.state.updated).toHaveLength(0);
   });
 });
 

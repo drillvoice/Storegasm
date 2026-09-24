@@ -71,6 +71,25 @@ export async function fetchSpaceTree(
     }
   }
 
+  // A parent loop (A inside B inside A) has no root, so the walk from the
+  // roots never reaches it and those spaces would silently vanish — or, if
+  // surfaced naively, send every recursive renderer round the loop forever.
+  // updateSpace refuses to create one, but any that exist are broken here:
+  // each unreached space is cut from its parent and shown at the top level.
+  const reached = new Set<string>();
+  const mark = (node: SpaceNode) => {
+    reached.add(node.id);
+    node.children.forEach(mark);
+  };
+  roots.forEach(mark);
+  for (const node of map.values()) {
+    if (reached.has(node.id)) continue;
+    const parent = map.get(node.parent_id!)!;
+    parent.children = parent.children.filter((c) => c !== node);
+    roots.push(node);
+    mark(node);
+  }
+
   return { data: roots, error: null };
 }
 
@@ -143,7 +162,10 @@ export async function createSpace(
  *
  * Re-parenting within an environment is allowed; pointing a space at a parent
  * in a different environment is not — that is what moveSpaceToEnvironment is
- * for, since it has to carry the whole subtree across.
+ * for, since it has to carry the whole subtree across. Nor is pointing it at
+ * itself or anything inside it: the parent form hides those choices, but two
+ * tabs working from stale trees can each make a move that looks fine alone
+ * and closes a loop together.
  *
  * @param userId - The authenticated user's ID.
  * @param spaceId - The UUID of the space to update.
@@ -157,6 +179,12 @@ export async function updateSpace(
 ): Promise<DbResult<Space>> {
   try {
     if (payload.parent_id) {
+      if (payload.parent_id === spaceId) {
+        return {
+          data: null,
+          error: { message: "A space cannot be its own parent" },
+        };
+      }
       const current = await fetchSpace(userId, spaceId);
       if (current.error) return { data: null, error: current.error };
       if (!current.data) {
@@ -171,6 +199,12 @@ export async function updateSpace(
         return {
           data: null,
           error: { message: "Parent space is in a different environment" },
+        };
+      }
+      if (await isDescendantOf(userId, payload.parent_id, spaceId)) {
+        return {
+          data: null,
+          error: { message: "A space cannot be moved into its own contents" },
         };
       }
     }
