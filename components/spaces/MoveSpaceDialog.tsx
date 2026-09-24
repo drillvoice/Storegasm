@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { useUserId } from "@/hooks/useUserId";
+import { queryKeys } from "@/lib/query-keys";
 import { fetchSpaceTree } from "@/lib/actions/spaces";
 import { collectSubtreeIds, flattenSpaces } from "@/lib/utils";
 import type { MoveSpacePayload, SpaceNode } from "@/lib/types";
@@ -75,7 +76,7 @@ export function MoveSpaceDialog({
   // The destination environment's tree. Shares the query key with useSpaces,
   // so the environment you're already in costs nothing to show.
   const treeQuery = useQuery({
-    queryKey: ["spaces", userId, targetEnvironmentId],
+    queryKey: queryKeys.spaces(userId, targetEnvironmentId),
     enabled: !!userId && !!targetEnvironmentId && open,
     queryFn: async () => {
       const result = await fetchSpaceTree(targetEnvironmentId!);

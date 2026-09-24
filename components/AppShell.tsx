@@ -6,6 +6,8 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { EnvironmentProvider } from "@/components/EnvironmentProvider";
 import { UserIdProvider } from "@/hooks/useUserId";
+import { queryKeys } from "@/lib/query-keys";
+import type { Environment } from "@/lib/types";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 
@@ -16,30 +18,52 @@ const ONE_DAY = 1000 * 60 * 60 * 24;
  * cache written by an older, possibly-incompatible build.
  *
  * EnvironmentProvider sits inside it, since the environment list — which
- * decides what everything else is scoped to — is itself a query.
+ * decides what everything else is scoped to — is itself a query. The (app)
+ * layout loads that list on the server and it is seeded into the cache here,
+ * so the header and the scope are right in the server-rendered HTML rather
+ * than appearing after a round trip.
  *
  * @param userId - The session user, resolved server-side by the (app) layout.
+ * @param initialEnvironments - The user's environments, or null if the server
+ *   couldn't load them (the client then fetches, and reports why it failed).
+ * @param initialEnvironmentId - The remembered selection, read by the server
+ *   from the selection cookie.
  */
 export function AppShell({
   userId,
+  initialEnvironments,
+  initialEnvironmentId,
   children,
 }: {
   userId: string;
+  initialEnvironments: Environment[] | null;
+  initialEnvironmentId: string | null;
   children: React.ReactNode;
 }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            gcTime: ONE_DAY,
-            refetchOnWindowFocus: false,
-            retry: 1,
-          },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: (query) =>
+            // Data the server streamed in (lib/server-data.ts) that had
+            // already arrived by hydration is stored with dataUpdatedAt 0,
+            // which would make it stale on sight and refetch everything the
+            // page just rendered. The server sends it fresh on every
+            // navigation and mutations invalidate it, so treat it as fresh.
+            query.state.dataUpdatedAt === 0 && query.state.data !== undefined
+              ? Infinity
+              : 30_000,
+          gcTime: ONE_DAY,
+          refetchOnWindowFocus: false,
+          retry: 1,
         },
-      })
-  );
+      },
+    });
+    if (initialEnvironments) {
+      client.setQueryData(queryKeys.environments(userId), initialEnvironments);
+    }
+    return client;
+  });
 
   const [persister] = useState(() =>
     createSyncStoragePersister({
@@ -58,7 +82,9 @@ export function AppShell({
       }}
     >
       <UserIdProvider userId={userId}>
-        <EnvironmentProvider>{children}</EnvironmentProvider>
+        <EnvironmentProvider initialEnvironmentId={initialEnvironmentId}>
+          {children}
+        </EnvironmentProvider>
       </UserIdProvider>
     </PersistQueryClientProvider>
   );

@@ -58,8 +58,11 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except static files and Next.js internals.
+     * Match all request paths except static files and Next.js internals. The
+     * service worker and its offline page must be reachable signed out: the
+     * browser refuses to register a worker whose script redirects, which it
+     * did — to /login — whenever a signed-out page registered it.
      */
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw\\.js$|offline\\.html$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

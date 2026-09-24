@@ -1,10 +1,21 @@
 import "server-only";
 
+import { cache } from "react";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 
 /**
- * Resolves the signed-in user for a server action.
+ * The Better Auth session for the current request.
+ *
+ * Wrapped in React's cache() so the layout and the page — which render in
+ * parallel — share one lookup instead of each making their own.
+ */
+export const getSession = cache(async () =>
+  auth.api.getSession({ headers: await headers() })
+);
+
+/**
+ * Resolves the signed-in user for a server action or server component.
  *
  * The userId is only ever taken from the Better Auth session — never from the
  * client. That is the app-level replacement for the RLS policies the schema
@@ -13,7 +24,7 @@ import { auth } from "@/lib/auth";
  * @returns The session user's id, or null when there is no valid session.
  */
 export async function getSessionUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSession();
   return session?.user.id ?? null;
 }
 

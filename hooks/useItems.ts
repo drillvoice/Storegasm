@@ -13,6 +13,7 @@ import {
 } from "@/lib/actions/items";
 import { useUserId } from "@/hooks/useUserId";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
+import { queryKeys } from "@/lib/query-keys";
 import type {
   Item,
   ItemWithSpace,
@@ -30,7 +31,7 @@ export function useItems(spaceId: string | null) {
   const userId = useUserId();
   const { environmentId } = useActiveEnvironment();
   const queryClient = useQueryClient();
-  const key = ["items", userId, environmentId, spaceId ?? "null"];
+  const key = queryKeys.items(userId, environmentId, spaceId);
 
   const query = useQuery({
     queryKey: key,
@@ -194,7 +195,7 @@ export function useAllTags() {
   const { environmentId } = useActiveEnvironment();
 
   const query = useQuery({
-    queryKey: ["tags", userId, environmentId],
+    queryKey: queryKeys.tags(userId, environmentId),
     enabled: !!userId && !!environmentId,
     queryFn: async () => {
       const result = await fetchAllTags(environmentId!);

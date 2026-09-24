@@ -8,6 +8,7 @@ import {
   deleteEnvironment,
 } from "@/lib/actions/environments";
 import { useUserId } from "@/hooks/useUserId";
+import { queryKeys } from "@/lib/query-keys";
 import type {
   Environment,
   CreateEnvironmentPayload,
@@ -42,7 +43,7 @@ interface UseEnvironmentsResult {
 export function useEnvironments(): UseEnvironmentsResult {
   const userId = useUserId();
   const queryClient = useQueryClient();
-  const key = ["environments", userId];
+  const key = queryKeys.environments(userId);
 
   const query = useQuery({
     queryKey: key,
