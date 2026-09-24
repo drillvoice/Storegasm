@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.2] - 2026-09-24
+
+### Fixed
+- **Server actions validate what they're sent.** Every action now checks its arguments before touching the database. Previously an edit request could carry fields the app never sends — such as the owner or the environment of a row — and they were written as-is. Anything unexpected is now refused with a message saying what was wrong.
+- **A space can no longer be moved inside itself.** Editing a space's parent now refuses the space itself or anything nested in it. The form already hid those choices, but two tabs working from out-of-date trees could together create a loop, after which those spaces vanished from the dashboard and any search matching an item inside them hung. Any loop that already exists is broken on display: its spaces appear at the top level, and search shows their breadcrumbs.
+
+### Changed
+- **Vercel preview builds no longer apply migrations.** A preview shares the production `DATABASE_URL` by default, so migrating there would apply an unmerged branch's schema to production. Set `MIGRATE_PREVIEWS=true` for the Preview environment if your previews have their own database (as with Neon's Vercel integration). Production builds migrate as before.
+
 ## [2.1.1] - 2026-09-23
 
 ### Fixed
