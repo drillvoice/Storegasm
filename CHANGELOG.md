@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.3] - 2026-09-24
+
+### Changed
+- **Pages load faster.** Every request used to check the session with a database query before doing its real work. That check now reads a signed session cookie and goes to the database at most every five minutes. The browser also no longer asks the server who you are before loading anything: the page is served already knowing. One side effect is that a session signed out from another device, for example by a password reset, can keep working for up to five minutes.
+
 ## [2.1.2] - 2026-09-24
 
 ### Fixed
