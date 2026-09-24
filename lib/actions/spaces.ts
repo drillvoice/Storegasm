@@ -8,12 +8,12 @@
  * does accept against lib/validation.ts before it reaches the data layer.
  *
  * The environmentId, unlike the userId, IS supplied by the client: it is the
- * user's current scope selection. Every action that takes one checks it
- * belongs to the session user first, so a forged id can at worst show the
- * caller their own other environment.
+ * user's current scope selection. It needs no ownership check here: reads
+ * filter on user_id as well, so another user's environment id matches
+ * nothing, and writes are refused by the (environment_id, user_id) foreign
+ * keys in lib/db/schema.ts.
  */
 
-import { assertOwnedEnvironment } from "@/lib/db/environments";
 import * as spacesDb from "@/lib/db/spaces";
 import { getSessionUserId, NOT_AUTHENTICATED } from "@/lib/session";
 import {
@@ -40,8 +40,6 @@ export async function fetchSpaceTree(
   if (!userId) return NOT_AUTHENTICATED;
   const envId = parseInput(environmentIdInput, environmentId);
   if (envId.error) return envId;
-  const owned = await assertOwnedEnvironment(userId, envId.data);
-  if (owned.error) return { data: null, error: owned.error };
   return spacesDb.fetchSpaceTree(userId, envId.data);
 }
 
@@ -67,8 +65,6 @@ export async function createSpace(
   if (envId.error) return envId;
   const input = parseInput(createSpaceInput, payload);
   if (input.error) return input;
-  const owned = await assertOwnedEnvironment(userId, envId.data);
-  if (owned.error) return { data: null, error: owned.error };
   return spacesDb.createSpace(userId, envId.data, input.data);
 }
 
@@ -96,8 +92,6 @@ export async function moveSpace(
   if (id.error) return id;
   const input = parseInput(moveSpaceInput, payload);
   if (input.error) return input;
-  const owned = await assertOwnedEnvironment(userId, input.data.environment_id);
-  if (owned.error) return { data: null, error: owned.error };
   return spacesDb.moveSpaceToEnvironment(
     userId,
     id.data,
@@ -124,7 +118,5 @@ export async function fetchChildSpaces(
   if (envId.error) return envId;
   const parent = parseInput(spaceIdInput.nullable(), parentId);
   if (parent.error) return parent;
-  const owned = await assertOwnedEnvironment(userId, envId.data);
-  if (owned.error) return { data: null, error: owned.error };
   return spacesDb.fetchChildSpaces(userId, envId.data, parent.data);
 }

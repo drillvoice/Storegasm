@@ -68,6 +68,25 @@ describe("describeDbError", () => {
     expect(message).toMatch(/migrations have not been applied/i);
   });
 
+  it("names the rule a foreign key violation broke", () => {
+    const error = Object.assign(
+      pgError("insert or update violates foreign key constraint", "23503"),
+      { constraint: "spaces_parent_same_environment_fk" }
+    );
+
+    expect(describeDbError(drizzleError(error))).toBe(
+      "Parent space is not in that environment"
+    );
+  });
+
+  it("falls back to the database's message for an unmapped constraint", () => {
+    const error = Object.assign(pgError("violates something", "23503"), {
+      constraint: "some_other_fk",
+    });
+
+    expect(describeDbError(drizzleError(error))).toBe("violates something");
+  });
+
   it("survives a non-Error being thrown", () => {
     expect(describeDbError("something broke")).toBe("something broke");
   });
