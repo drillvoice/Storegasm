@@ -2,14 +2,6 @@ import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
- * Optimistic auth guard for all app routes.
- *
- * Checks only for the presence of the Better Auth session cookie — fast and
- * good enough for routing decisions. Real session validation happens
- * server-side in app/(app)/layout.tsx and in every server action, so a stale
- * or forged cookie can never reach data.
- */
-/**
  * Routes reachable without a session. The password-reset pages have to be
  * here: anyone using them is by definition unable to sign in.
  */
@@ -20,6 +12,19 @@ const PUBLIC_ROUTES = [
   "/reset-password",
 ];
 
+/** True when `pathname` is `route` itself or a path beneath it. */
+function isUnder(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
+/**
+ * Optimistic auth guard for all app routes.
+ *
+ * Checks only for the presence of the Better Auth session cookie — fast and
+ * good enough for routing decisions. Real session validation happens
+ * server-side in app/(app)/layout.tsx and in every server action, so a stale
+ * or forged cookie can never reach data.
+ */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -29,9 +34,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const sessionCookie = getSessionCookie(request);
-  const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  );
+  const isPublicRoute = PUBLIC_ROUTES.some((route) => isUnder(pathname, route));
 
   // Auth guard: redirect unauthenticated users away from app routes.
   if (!sessionCookie && !isPublicRoute) {
@@ -45,7 +48,7 @@ export async function proxy(request: NextRequest) {
   // someone from finishing a reset they started from their email.
   if (
     sessionCookie &&
-    (pathname.startsWith("/login") || pathname.startsWith("/signup"))
+    (isUnder(pathname, "/login") || isUnder(pathname, "/signup"))
   ) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/dashboard";

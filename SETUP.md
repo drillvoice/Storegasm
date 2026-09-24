@@ -32,7 +32,7 @@ git push -u origin main
 
 1. Go to [neon.tech](https://neon.tech) and sign in.
 2. Click **New project**.
-3. Choose a name (e.g. `storegasm`) and select the region closest to your Vercel deployment.
+3. Choose a name (e.g. `storegasm`) and select the region closest to your Vercel deployment. Every page load makes database queries from Vercel's servers, so this matters more than the region closest to you. Vercel runs functions in Washington, D.C. (`iad1`) unless you change it, which pairs with Neon's **AWS US East (N. Virginia)**.
 4. On the project dashboard, click **Connect** and copy the **pooled** connection string (the host contains `-pooler`). You'll need it in Step 3.
 
 Neon's free tier suspends compute after inactivity but wakes automatically on the next query (~1 s) — no manual intervention needed.
