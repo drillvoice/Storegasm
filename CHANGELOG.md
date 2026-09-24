@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2026-09-24
+
+### Changed
+- **The database enforces the environment rules.** A space or item can only be in an environment its owner owns, a space's parent must be in the same environment, and an item must be in its space's environment. These used to be checked by the app before every write, and are now foreign keys, so no write can break them. Most requests make one fewer database round trip as a result, and moving a space to another environment is a single update that the database carries through to everything inside it.
+- The migration (applied automatically on deploy) first repairs any rows that already break these rules, so it applies cleanly to existing data. On a healthy database it changes nothing.
+
+### Fixed
+- An environment's "last updated" time now changes when it is renamed or archived. It previously stayed at the time the environment was created.
+- Opening a brand-new account in two tabs at once can no longer create two "My Home" environments.
+
 ## [2.1.3] - 2026-09-24
 
 ### Changed
