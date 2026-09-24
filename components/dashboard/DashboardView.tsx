@@ -1,32 +1,17 @@
 "use client";
 
-import { useState, useRef } from "react";
-import dynamic from "next/dynamic";
 import { Plus } from "lucide-react";
 import { useSpaces } from "@/hooks/useSpaces";
 import { useItems, useAllTags } from "@/hooks/useItems";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
+import {
+  WorkspaceDialogs,
+  useWorkspace,
+} from "@/components/workspace/WorkspaceDialogs";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { SpaceNode, Item } from "@/lib/types";
-
-const SpaceForm = dynamic(() =>
-  import("@/components/spaces/SpaceForm").then((m) => m.SpaceForm)
-);
-const ItemForm = dynamic(() =>
-  import("@/components/items/ItemForm").then((m) => m.ItemForm)
-);
-const MoveItemDialog = dynamic(() =>
-  import("@/components/items/MoveItemDialog").then((m) => m.MoveItemDialog)
-);
-const MoveSpaceDialog = dynamic(() =>
-  import("@/components/spaces/MoveSpaceDialog").then((m) => m.MoveSpaceDialog)
-);
-const ConfirmDialog = dynamic(() =>
-  import("@/components/ui/confirm-dialog").then((m) => m.ConfirmDialog)
-);
 
 /**
  * Dashboard — the space tree and unassigned items of the environment
@@ -41,109 +26,18 @@ export function DashboardView() {
   const { spaces, loading, addSpace, editSpace, moveSpaceTo, removeSpace } =
     useSpaces();
   const { items: unassigned, addItem, editItem, removeItem } = useItems(null);
-  const { tags: allTags } = useAllTags();
-
-  // Space form state
-  const [spaceFormOpen, setSpaceFormOpen] = useState(false);
-  const [editingSpace, setEditingSpace] = useState<SpaceNode | null>(null);
-  const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
-
-  // Item form state
-  const [itemFormOpen, setItemFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-
-  // Move dialog state — one for items, one for whole spaces
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [movingItem, setMovingItem] = useState<Item | null>(null);
-  const [moveSpaceOpen, setMoveSpaceOpen] = useState(false);
-  const [movingSpace, setMovingSpace] = useState<SpaceNode | null>(null);
-
-  // Confirm dialog state — one dialog handles both space and item deletes
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const pendingAction = useRef<() => void>(() => {});
-
-  function askConfirm(title: string, action: () => void) {
-    setConfirmTitle(title);
-    pendingAction.current = action;
-    setConfirmOpen(true);
-  }
-
-  function openAddRoot() {
-    setEditingSpace(null);
-    setDefaultParentId(null);
-    setSpaceFormOpen(true);
-  }
-
-  function openAddChild(parentId: string) {
-    setEditingSpace(null);
-    setDefaultParentId(parentId);
-    setSpaceFormOpen(true);
-  }
-
-  function openEditSpace(node: SpaceNode) {
-    setEditingSpace(node);
-    setDefaultParentId(null);
-    setSpaceFormOpen(true);
-  }
-
-  function openMoveSpace(node: SpaceNode) {
-    setMovingSpace(node);
-    setMoveSpaceOpen(true);
-  }
-
-  function handleDeleteSpace(node: SpaceNode) {
-    askConfirm(
-      `Delete "${node.name}" and all its contents?`,
-      () => removeSpace(node.id)
-    );
-  }
-
-  async function handleSpaceSubmit(values: {
-    name: string;
-    description: string | null;
-    parent_id: string | null;
-  }) {
-    if (editingSpace) {
-      return editSpace(editingSpace.id, values);
-    }
-    return addSpace(values);
-  }
-
-  function openAddItem() {
-    setEditingItem(null);
-    setItemFormOpen(true);
-  }
-
-  function openEditItem(item: Item) {
-    setEditingItem(item);
-    setItemFormOpen(true);
-  }
-
-  function openMoveItem(item: Item) {
-    setMovingItem(item);
-    setMoveDialogOpen(true);
-  }
-
-  async function handleMoveItem(itemId: string, spaceId: string | null) {
-    return editItem(itemId, { space_id: spaceId });
-  }
-
-  function handleDeleteItem(item: Item) {
-    askConfirm(`Delete "${item.name}"?`, () => removeItem(item.id));
-  }
-
-  async function handleItemSubmit(values: {
-    name: string;
-    description: string | null;
-    space_id: string | null;
-    tags: string[];
-  }) {
-    if (editingItem) {
-      return editItem(editingItem.id, values);
-    }
-    return addItem(values);
-  }
+  const { tags } = useAllTags();
+  const workspace = useWorkspace({
+    spaces,
+    tags,
+    addSpace,
+    editSpace,
+    moveSpaceTo,
+    removeSpace,
+    addItem,
+    editItem,
+    removeItem,
+  });
 
   return (
     <div className="space-y-8">
@@ -151,7 +45,7 @@ export function DashboardView() {
         <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight">
           {environment?.name ?? "Your spaces"}
         </h1>
-        <Button onClick={openAddRoot} size="sm">
+        <Button onClick={() => workspace.openAddSpace(null)} size="sm">
           <Plus className="mr-2 h-4 w-4" />
           Add space
         </Button>
@@ -172,11 +66,11 @@ export function DashboardView() {
         <>
           <SpaceTreemap
             spaces={spaces}
-            onAddRoot={openAddRoot}
-            onAddChild={openAddChild}
-            onEdit={openEditSpace}
-            onMove={openMoveSpace}
-            onDelete={handleDeleteSpace}
+            onAddRoot={() => workspace.openAddSpace(null)}
+            onAddChild={workspace.openAddSpace}
+            onEdit={workspace.openEditSpace}
+            onMove={workspace.openMoveSpace}
+            onDelete={workspace.deleteSpace}
           />
 
           {unassigned.length > 0 && (
@@ -191,9 +85,9 @@ export function DashboardView() {
                     <ItemCard
                       key={item.id}
                       item={item}
-                      onEdit={openEditItem}
-                      onMove={openMoveItem}
-                      onDelete={handleDeleteItem}
+                      onEdit={workspace.openEditItem}
+                      onMove={workspace.openMoveItem}
+                      onDelete={workspace.deleteItem}
                     />
                   ))}
                 </div>
@@ -204,51 +98,13 @@ export function DashboardView() {
       )}
 
       <div className="fixed bottom-6 right-6">
-        <Button onClick={openAddItem} size="lg" className="rounded-full shadow-lg">
+        <Button onClick={workspace.openAddItem} size="lg" className="rounded-full shadow-lg">
           <Plus className="mr-2 h-5 w-5" />
           Add item
         </Button>
       </div>
 
-      <SpaceForm
-        open={spaceFormOpen}
-        onOpenChange={setSpaceFormOpen}
-        initialValues={editingSpace ?? undefined}
-        defaultParentId={defaultParentId}
-        allSpaces={spaces}
-        onSubmit={handleSpaceSubmit}
-      />
-
-      <ItemForm
-        open={itemFormOpen}
-        onOpenChange={setItemFormOpen}
-        initialValues={editingItem ?? undefined}
-        allSpaces={spaces}
-        existingTags={allTags}
-        onSubmit={handleItemSubmit}
-      />
-
-      <MoveItemDialog
-        open={moveDialogOpen}
-        onOpenChange={setMoveDialogOpen}
-        item={movingItem}
-        allSpaces={spaces}
-        onMove={handleMoveItem}
-      />
-
-      <MoveSpaceDialog
-        open={moveSpaceOpen}
-        onOpenChange={setMoveSpaceOpen}
-        space={movingSpace}
-        onMove={moveSpaceTo}
-      />
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={confirmTitle}
-        onConfirm={() => pendingAction.current()}
-      />
+      <WorkspaceDialogs workspace={workspace} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Plus, ChevronRight, Home } from "lucide-react";
@@ -8,18 +8,27 @@ import { useSpaces } from "@/hooks/useSpaces";
 import { useItems, useAllTags } from "@/hooks/useItems";
 import { useUserId } from "@/hooks/useUserId";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
-import { SpaceForm } from "@/components/spaces/SpaceForm";
 import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
 import { ItemCard } from "@/components/items/ItemCard";
-import { ItemForm } from "@/components/items/ItemForm";
-import { MoveItemDialog } from "@/components/items/MoveItemDialog";
-import { MoveSpaceDialog } from "@/components/spaces/MoveSpaceDialog";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  WorkspaceDialogs,
+  useWorkspace,
+} from "@/components/workspace/WorkspaceDialogs";
 import { fetchSpace } from "@/lib/actions/spaces";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { SpaceNode, Item } from "@/lib/types";
+import type { SpaceNode } from "@/lib/types";
+
+/** The path from a root down to `targetId`, or [] if it isn't in the tree. */
+function findPath(nodes: SpaceNode[], targetId: string): SpaceNode[] {
+  for (const node of nodes) {
+    if (node.id === targetId) return [node];
+    const below = findPath(node.children, targetId);
+    if (below.length) return [node, ...below];
+  }
+  return [];
+}
 
 /**
  * Space detail — the breadcrumb, child spaces, and items for a single space.
@@ -29,39 +38,39 @@ import type { SpaceNode, Item } from "@/lib/types";
  * @param id - The space's id, from the URL.
  */
 export function SpaceView({ id }: { id: string }) {
-
   const userId = useUserId();
   const { environmentId, setEnvironmentId } = useActiveEnvironment();
-  const { spaces, addSpace, editSpace, moveSpaceTo, removeSpace } = useSpaces();
-  const { items, addItem, editItem, removeItem } = useItems(id);
-  const { tags: allTags } = useAllTags();
+  const {
+    spaces,
+    loading: spacesLoading,
+    addSpace,
+    editSpace,
+    moveSpaceTo,
+    removeSpace,
+  } = useSpaces();
+  const {
+    items,
+    loading: itemsLoading,
+    addItem,
+    editItem,
+    removeItem,
+  } = useItems(id);
+  const { tags } = useAllTags();
+  const workspace = useWorkspace({
+    spaces,
+    tags,
+    defaultSpaceId: id,
+    addSpace,
+    editSpace,
+    moveSpaceTo,
+    removeSpace,
+    addItem,
+    editItem,
+    removeItem,
+  });
 
-  // Derive the current space and its breadcrumb from the flat tree.
-  function findNode(nodes: SpaceNode[], targetId: string): SpaceNode | null {
-    for (const node of nodes) {
-      if (node.id === targetId) return node;
-      const found = findNode(node.children, targetId);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function buildBreadcrumb(
-    nodes: SpaceNode[],
-    targetId: string,
-    path: SpaceNode[] = []
-  ): SpaceNode[] {
-    for (const node of nodes) {
-      const newPath = [...path, node];
-      if (node.id === targetId) return newPath;
-      const found = buildBreadcrumb(node.children, targetId, newPath);
-      if (found.length) return found;
-    }
-    return [];
-  }
-
-  const currentNode = findNode(spaces, id);
-  const breadcrumb = buildBreadcrumb(spaces, id);
+  const breadcrumb = findPath(spaces, id);
+  const currentNode = breadcrumb.at(-1) ?? null;
 
   // A link into another environment — a bookmark followed after the space was
   // moved, or a search result from an "all environments" search. Rather than
@@ -69,7 +78,7 @@ export function SpaceView({ id }: { id: string }) {
   // scoped) and switch scope to wherever it actually lives.
   const strayQuery = useQuery({
     queryKey: queryKeys.spaceEnvironment(userId, id),
-    enabled: !!userId && !!environmentId && !currentNode,
+    enabled: !!userId && !!environmentId && !spacesLoading && !currentNode,
     queryFn: async () => {
       const result = await fetchSpace(id);
       if (result.error) throw new Error(result.error.message);
@@ -78,109 +87,41 @@ export function SpaceView({ id }: { id: string }) {
   });
 
   const strayEnvironmentId = strayQuery.data?.environment_id ?? null;
+  const switching =
+    !!strayEnvironmentId && strayEnvironmentId !== environmentId;
 
   useEffect(() => {
-    if (!strayEnvironmentId) return;
-    if (strayEnvironmentId === environmentId) return;
-    setEnvironmentId(strayEnvironmentId);
-  }, [strayEnvironmentId, environmentId, setEnvironmentId]);
+    if (switching) setEnvironmentId(strayEnvironmentId!);
+  }, [switching, strayEnvironmentId, setEnvironmentId]);
 
-  // Space form state
-  const [spaceFormOpen, setSpaceFormOpen] = useState(false);
-  const [editingSpace, setEditingSpace] = useState<SpaceNode | null>(null);
-  const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
+  // Not in this environment's tree, and the lookup found it nowhere else (or
+  // failed): the space doesn't exist, or isn't this user's.
+  const notFound =
+    !spacesLoading &&
+    !currentNode &&
+    !switching &&
+    (strayQuery.isSuccess || strayQuery.isError);
 
-  // Item form state
-  const [itemFormOpen, setItemFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-
-  // Move dialog state — one for items, one for whole spaces
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [movingItem, setMovingItem] = useState<Item | null>(null);
-  const [moveSpaceOpen, setMoveSpaceOpen] = useState(false);
-  const [movingSpace, setMovingSpace] = useState<SpaceNode | null>(null);
-
-  // Confirm dialog state
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const pendingAction = useRef<() => void>(() => {});
-
-  function askConfirm(title: string, action: () => void) {
-    setConfirmTitle(title);
-    pendingAction.current = action;
-    setConfirmOpen(true);
-  }
-
-  function openAddChild() {
-    setEditingSpace(null);
-    setDefaultParentId(id);
-    setSpaceFormOpen(true);
-  }
-
-  function openAddNestedChild(parentId: string) {
-    setEditingSpace(null);
-    setDefaultParentId(parentId);
-    setSpaceFormOpen(true);
-  }
-
-  function openEditSpace(node: SpaceNode) {
-    setEditingSpace(node);
-    setDefaultParentId(null);
-    setSpaceFormOpen(true);
-  }
-
-  function openMoveSpace(node: SpaceNode) {
-    setMovingSpace(node);
-    setMoveSpaceOpen(true);
-  }
-
-  function handleDeleteSpace(node: SpaceNode) {
-    askConfirm(
-      `Delete "${node.name}" and all its contents?`,
-      () => removeSpace(node.id)
+  if (notFound) {
+    return (
+      <div className="space-y-4 py-12 text-center">
+        <p className="font-medium">This space doesn&apos;t exist</p>
+        <p className="text-sm text-muted-foreground">
+          It may have been deleted.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/dashboard">Back to your spaces</Link>
+        </Button>
+      </div>
     );
   }
 
-  async function handleSpaceSubmit(values: {
-    name: string;
-    description: string | null;
-    parent_id: string | null;
-  }) {
-    if (editingSpace) return editSpace(editingSpace.id, values);
-    return addSpace(values);
-  }
-
-  function openAddItem() {
-    setEditingItem(null);
-    setItemFormOpen(true);
-  }
-
-  function openEditItem(item: Item) {
-    setEditingItem(item);
-    setItemFormOpen(true);
-  }
-
-  function openMoveItem(item: Item) {
-    setMovingItem(item);
-    setMoveDialogOpen(true);
-  }
-
-  async function handleMoveItem(itemId: string, spaceId: string | null) {
-    return editItem(itemId, { space_id: spaceId });
-  }
-
-  function handleDeleteItem(item: Item) {
-    askConfirm(`Delete "${item.name}"?`, () => removeItem(item.id));
-  }
-
-  async function handleItemSubmit(values: {
-    name: string;
-    description: string | null;
-    space_id: string | null;
-    tags: string[];
-  }) {
-    if (editingItem) return editItem(editingItem.id, values);
-    return addItem({ ...values, space_id: values.space_id ?? id });
+  if (!currentNode) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-muted-foreground animate-pulse">Loading…</p>
+      </div>
+    );
   }
 
   return (
@@ -212,32 +153,28 @@ export function SpaceView({ id }: { id: string }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {currentNode?.name ?? "Space"}
+            {currentNode.name}
           </h1>
-          {currentNode?.description && (
+          {currentNode.description && (
             <p className="mt-1 text-muted-foreground">{currentNode.description}</p>
           )}
         </div>
         <div className="flex gap-2">
-          {currentNode && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openEditSpace(currentNode)}
-              >
-                Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openMoveSpace(currentNode)}
-              >
-                Move
-              </Button>
-            </>
-          )}
-          <Button size="sm" onClick={openAddChild}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => workspace.openEditSpace(currentNode)}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => workspace.openMoveSpace(currentNode)}
+          >
+            Move
+          </Button>
+          <Button size="sm" onClick={() => workspace.openAddSpace(id)}>
             <Plus className="mr-1 h-4 w-4" />
             Add space
           </Button>
@@ -245,16 +182,14 @@ export function SpaceView({ id }: { id: string }) {
       </div>
 
       {/* Child spaces */}
-      {currentNode && (
-        <SpaceTreemap
-          spaces={currentNode.children}
-          onAddRoot={openAddChild}
-          onAddChild={openAddNestedChild}
-          onEdit={openEditSpace}
-          onMove={openMoveSpace}
-          onDelete={handleDeleteSpace}
-        />
-      )}
+      <SpaceTreemap
+        spaces={currentNode.children}
+        onAddRoot={() => workspace.openAddSpace(id)}
+        onAddChild={workspace.openAddSpace}
+        onEdit={workspace.openEditSpace}
+        onMove={workspace.openMoveSpace}
+        onDelete={workspace.deleteSpace}
+      />
 
       {/* Items */}
       <section>
@@ -262,13 +197,17 @@ export function SpaceView({ id }: { id: string }) {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Items {items.length > 0 && `(${items.length})`}
           </h2>
-          <Button size="sm" variant="outline" onClick={openAddItem}>
+          <Button size="sm" variant="outline" onClick={workspace.openAddItem}>
             <Plus className="mr-1 h-4 w-4" />
             Add item
           </Button>
         </div>
 
-        {items.length === 0 ? (
+        {itemsLoading ? (
+          <p className="text-sm text-muted-foreground py-4 animate-pulse">
+            Loading items…
+          </p>
+        ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4">
             No items in this space yet.
           </p>
@@ -278,9 +217,9 @@ export function SpaceView({ id }: { id: string }) {
               <ItemCard
                 key={item.id}
                 item={item}
-                onEdit={openEditItem}
-                onMove={openMoveItem}
-                onDelete={handleDeleteItem}
+                onEdit={workspace.openEditItem}
+                onMove={workspace.openMoveItem}
+                onDelete={workspace.deleteItem}
               />
             ))}
           </div>
@@ -289,46 +228,7 @@ export function SpaceView({ id }: { id: string }) {
 
       <Separator />
 
-      <SpaceForm
-        open={spaceFormOpen}
-        onOpenChange={setSpaceFormOpen}
-        initialValues={editingSpace ?? undefined}
-        defaultParentId={defaultParentId}
-        allSpaces={spaces}
-        onSubmit={handleSpaceSubmit}
-      />
-
-      <ItemForm
-        open={itemFormOpen}
-        onOpenChange={setItemFormOpen}
-        initialValues={editingItem ?? undefined}
-        defaultSpaceId={id}
-        allSpaces={spaces}
-        existingTags={allTags}
-        onSubmit={handleItemSubmit}
-      />
-
-      <MoveItemDialog
-        open={moveDialogOpen}
-        onOpenChange={setMoveDialogOpen}
-        item={movingItem}
-        allSpaces={spaces}
-        onMove={handleMoveItem}
-      />
-
-      <MoveSpaceDialog
-        open={moveSpaceOpen}
-        onOpenChange={setMoveSpaceOpen}
-        space={movingSpace}
-        onMove={moveSpaceTo}
-      />
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={confirmTitle}
-        onConfirm={() => pendingAction.current()}
-      />
+      <WorkspaceDialogs workspace={workspace} />
     </div>
   );
 }

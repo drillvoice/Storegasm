@@ -12,6 +12,7 @@ import {
   fetchAllTags,
 } from "@/lib/actions/items";
 import { useUserId } from "@/hooks/useUserId";
+import { invalidateItemCaches } from "@/hooks/useItemMutations";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { queryKeys } from "@/lib/query-keys";
 import type {
@@ -46,14 +47,9 @@ export function useItems(spaceId: string | null) {
     },
   });
 
-  function invalidate() {
-    // Item lists for other spaces and the tag list may also be affected — and
-    // an item moved into another environment's space leaves this one, so
-    // invalidate by prefix rather than for this environment alone.
-    queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    queryClient.invalidateQueries({ queryKey: ["tags", userId] });
-    queryClient.invalidateQueries({ queryKey: ["search", userId] });
-  }
+  // Item lists for other spaces and the tag list may also be affected — and
+  // an item moved into another environment's space leaves this one.
+  const invalidate = () => invalidateItemCaches(queryClient, userId);
 
   const addMutation = useMutation({
     mutationFn: async (payload: CreateItemPayload) => {
@@ -210,8 +206,7 @@ export function useAllTags() {
   };
 }
 
-// Stable fallback so consumers that compare results by reference (e.g. the
-// search page's render-time sync) don't see a "new" empty result every render.
+// Stable fallback, so an empty result is the same array from render to render.
 const NO_RESULTS: ItemWithSpace[] = [];
 
 /**
