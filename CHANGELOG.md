@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0] - 2026-09-24
+
+### Changed
+- **Pages arrive with their contents.** The dashboard and space pages are now rendered on the server with your spaces and items already in them. Before, the page loaded empty and then made several requests one after another before anything appeared. Moving between pages also shows what's already loaded straight away and refreshes it in the background.
+- The environment you're viewing is now remembered in a cookie instead of the browser's local storage, so the server knows which environment to render. The environment you had selected carries over automatically.
+
+### Fixed
+- The offline service worker now installs even when you first land on the sign-in page. Its script was being redirected to the sign-in page, which browsers refuse to register.
+
 ## [2.2.0] - 2026-09-24
 
 ### Changed
