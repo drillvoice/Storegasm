@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.1] - 2026-09-25
+
+### Changed
+- **Switching environment and refreshing after an edit are faster.** These loads used to be sent to the server one after another; now they run at the same time. Switching environment, for example, fetches the space tree, the unassigned items and the tag list together.
+
+### Added
+- Automated checks on every pull request: lint, type checking, unit tests and a build. They also apply every migration to an empty Postgres database, confirm the migrations match the schema, and test the data layer against the result.
+
 ## [2.4.0] - 2026-09-24
 
 ### Added
