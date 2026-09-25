@@ -2,15 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchItemsBySpace,
-  fetchUnassignedItems,
-  createItem,
-  updateItem,
-  deleteItem,
-  searchItems,
-  fetchAllTags,
-} from "@/lib/actions/items";
+import { createItem, updateItem, deleteItem } from "@/lib/actions/items";
+import { api } from "@/lib/api/client";
 import { useUserId } from "@/hooks/useUserId";
 import { invalidateItemCaches } from "@/hooks/useItemMutations";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
@@ -37,14 +30,7 @@ export function useItems(spaceId: string | null) {
   const query = useQuery({
     queryKey: key,
     enabled: !!userId && !!environmentId,
-    queryFn: async () => {
-      const result =
-        spaceId === null
-          ? await fetchUnassignedItems(environmentId!)
-          : await fetchItemsBySpace(environmentId!, spaceId);
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: () => api.items(environmentId!, spaceId),
   });
 
   // Item lists for other spaces and the tag list may also be affected — and
@@ -193,11 +179,7 @@ export function useAllTags() {
   const query = useQuery({
     queryKey: queryKeys.tags(userId, environmentId),
     enabled: !!userId && !!environmentId,
-    queryFn: async () => {
-      const result = await fetchAllTags(environmentId!);
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: () => api.tags(environmentId!),
   });
 
   return {
@@ -233,11 +215,7 @@ export function useItemSearch(query: string, allEnvironments = false) {
   const q = useQuery({
     queryKey: ["search", userId, scope ?? "all", debounced],
     enabled: !!userId && !!debounced && (allEnvironments || !!environmentId),
-    queryFn: async () => {
-      const result = await searchItems(scope, debounced);
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: () => api.search(scope, debounced),
   });
 
   if (!trimmed) {

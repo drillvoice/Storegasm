@@ -22,14 +22,16 @@ function isUnder(pathname: string, route: string): boolean {
  *
  * Checks only for the presence of the Better Auth session cookie — fast and
  * good enough for routing decisions. Real session validation happens
- * server-side in app/(app)/layout.tsx and in every server action, so a stale
- * or forged cookie can never reach data.
+ * server-side in app/(app)/layout.tsx, every data route and every server
+ * action, so a stale or forged cookie can never reach data.
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Better Auth's own endpoints must always pass through.
-  if (pathname.startsWith("/api/auth")) {
+  // API routes answer for themselves: Better Auth's endpoints must always pass
+  // through, and the data routes check the session and reply 401 as JSON —
+  // a redirect to the login page would reach fetch() as unparseable HTML.
+  if (isUnder(pathname, "/api")) {
     return NextResponse.next();
   }
 

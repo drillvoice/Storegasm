@@ -14,7 +14,7 @@ import {
   WorkspaceDialogs,
   useWorkspace,
 } from "@/components/workspace/WorkspaceDialogs";
-import { fetchSpace } from "@/lib/actions/spaces";
+import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -74,16 +74,12 @@ export function SpaceView({ id }: { id: string }) {
 
   // A link into another environment — a bookmark followed after the space was
   // moved, or a search result from an "all environments" search. Rather than
-  // showing an empty page, look the space up (fetchSpace is not environment-
+  // showing an empty page, look the space up (the lookup is not environment-
   // scoped) and switch scope to wherever it actually lives.
   const strayQuery = useQuery({
     queryKey: queryKeys.spaceEnvironment(userId, id),
     enabled: !!userId && !!environmentId && !spacesLoading && !currentNode,
-    queryFn: async () => {
-      const result = await fetchSpace(id);
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: () => api.space(id),
   });
 
   const strayEnvironmentId = strayQuery.data?.environment_id ?? null;

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EnvironmentForm } from "@/components/environments/EnvironmentForm";
 import { useEnvironments } from "@/hooks/useEnvironments";
-import { countEnvironmentContents } from "@/lib/actions/environments";
+import { api } from "@/lib/api/client";
 import type { Environment } from "@/lib/types";
 
 interface ManageEnvironmentsDialogProps {
@@ -69,13 +69,15 @@ export function ManageEnvironmentsDialog({
     setError(null);
     setPendingDelete(environment);
     // Say what will be destroyed before the user commits to it.
-    const counts = await countEnvironmentContents(environment.id);
+    const counts = await api
+      .environmentContents(environment.id)
+      .catch(() => null);
     setDeleteDescription(
-      counts.data
-        ? `This permanently deletes ${counts.data.spaces} ${
-            counts.data.spaces === 1 ? "space" : "spaces"
-          } and ${counts.data.items} ${
-            counts.data.items === 1 ? "item" : "items"
+      counts
+        ? `This permanently deletes ${counts.spaces} ${
+            counts.spaces === 1 ? "space" : "spaces"
+          } and ${counts.items} ${
+            counts.items === 1 ? "item" : "items"
           }. Archive it instead if you just want it out of the way.`
         : "This permanently deletes every space and item inside it."
     );

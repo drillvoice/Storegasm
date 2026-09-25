@@ -2,11 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchEnvironments,
   createEnvironment,
   updateEnvironment,
   deleteEnvironment,
 } from "@/lib/actions/environments";
+import { api } from "@/lib/api/client";
 import { useUserId } from "@/hooks/useUserId";
 import { queryKeys } from "@/lib/query-keys";
 import type {
@@ -48,11 +48,7 @@ export function useEnvironments(): UseEnvironmentsResult {
   const query = useQuery({
     queryKey: key,
     enabled: !!userId,
-    queryFn: async () => {
-      const result = await fetchEnvironments();
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: api.environments,
   });
 
   function invalidate() {

@@ -26,34 +26,11 @@ import {
 } from "@/lib/validation";
 import type {
   Space,
-  SpaceNode,
   CreateSpacePayload,
   UpdateSpacePayload,
   MoveSpacePayload,
   DbResult,
 } from "@/lib/types";
-
-export async function fetchSpaceTree(
-  environmentId: string
-): Promise<DbResult<SpaceNode[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  return spacesDb.fetchSpaceTree(userId, envId.data);
-}
-
-export async function fetchSpace(
-  spaceId: string
-): Promise<DbResult<Space | null>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const id = parseInput(spaceIdInput, spaceId);
-  // A malformed id can't name a space — answer "not found" like any other
-  // unknown id, so a mangled URL lands on the page's not-found state.
-  if (id.error) return { data: null, error: null };
-  return spacesDb.fetchSpace(userId, id.data);
-}
 
 export async function createSpace(
   environmentId: string,
@@ -108,15 +85,3 @@ export async function deleteSpace(spaceId: string): Promise<DbResult<null>> {
   return spacesDb.deleteSpace(userId, id.data);
 }
 
-export async function fetchChildSpaces(
-  environmentId: string,
-  parentId: string | null
-): Promise<DbResult<Space[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  const parent = parseInput(spaceIdInput.nullable(), parentId);
-  if (parent.error) return parent;
-  return spacesDb.fetchChildSpaces(userId, envId.data, parent.data);
-}

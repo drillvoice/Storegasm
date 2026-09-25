@@ -23,16 +23,6 @@ import type {
   DbResult,
 } from "@/lib/types";
 
-/**
- * Returns the user's environments, creating a default one if they have none,
- * so the client always has a scope to work in.
- */
-export async function fetchEnvironments(): Promise<DbResult<Environment[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.ensureDefaultEnvironment(userId);
-}
-
 export async function createEnvironment(
   payload: CreateEnvironmentPayload
 ): Promise<DbResult<Environment>> {
@@ -66,12 +56,3 @@ export async function deleteEnvironment(
   return environmentsDb.deleteEnvironment(userId, envId.data);
 }
 
-export async function countEnvironmentContents(
-  environmentId: string
-): Promise<DbResult<{ spaces: number; items: number }>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  return environmentsDb.countEnvironmentContents(userId, envId.data);
-}

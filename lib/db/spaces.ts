@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { toDbError } from "@/lib/db/errors";
 import { spaces } from "@/lib/db/schema";
@@ -249,39 +249,6 @@ export async function deleteSpace(
       .delete(spaces)
       .where(and(eq(spaces.id, spaceId), eq(spaces.user_id, userId)));
     return { data: null, error: null };
-  } catch (e) {
-    return toDbError(e);
-  }
-}
-
-/**
- * Fetches the immediate children of a space within one environment.
- *
- * @param userId - The authenticated user's ID.
- * @param environmentId - The environment to scope to.
- * @param parentId - The parent space UUID, or null to get root spaces.
- * @returns An array of child Space records.
- */
-export async function fetchChildSpaces(
-  userId: string,
-  environmentId: string,
-  parentId: string | null
-): Promise<DbResult<Space[]>> {
-  try {
-    const data = await db
-      .select(spaceColumns)
-      .from(spaces)
-      .where(
-        and(
-          eq(spaces.user_id, userId),
-          eq(spaces.environment_id, environmentId),
-          parentId === null
-            ? isNull(spaces.parent_id)
-            : eq(spaces.parent_id, parentId)
-        )
-      )
-      .orderBy(asc(spaces.name));
-    return { data, error: null };
   } catch (e) {
     return toDbError(e);
   }

@@ -82,7 +82,6 @@ import {
   createSpace,
   updateSpace,
   deleteSpace,
-  fetchChildSpaces,
   moveSpaceToEnvironment,
 } from "@/lib/db/spaces";
 import { spaces } from "@/lib/db/schema";
@@ -367,26 +366,5 @@ describe("deleteSpace", () => {
     const result = await deleteSpace(USER_ID, "s-1");
 
     expect(result.error?.message).toBe("delete failed");
-  });
-});
-
-describe("fetchChildSpaces", () => {
-  it("returns children for a parent id", async () => {
-    const child = makeSpace({ id: "c-1", name: "Shelf", parent_id: "parent-1" });
-    h.state.resultsByTable.set(spaces, [child]);
-
-    const result = await fetchChildSpaces(USER_ID, ENV_ID, "parent-1");
-
-    expect(result.error).toBeNull();
-    expect(result.data).toEqual([child]);
-  });
-
-  it("returns root spaces when parentId is null", async () => {
-    h.state.resultsByTable.set(spaces, []);
-
-    const result = await fetchChildSpaces(USER_ID, ENV_ID, null);
-
-    expect(result.error).toBeNull();
-    expect(result.data).toEqual([]);
   });
 });

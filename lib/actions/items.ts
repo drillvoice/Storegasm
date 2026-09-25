@@ -23,56 +23,14 @@ import {
   environmentIdInput,
   itemIdInput,
   parseInput,
-  searchQueryInput,
-  spaceIdInput,
   updateItemInput,
 } from "@/lib/validation";
 import type {
   Item,
-  ItemWithSpace,
   CreateItemPayload,
   UpdateItemPayload,
   DbResult,
 } from "@/lib/types";
-
-export async function fetchItemsBySpace(
-  environmentId: string,
-  spaceId: string
-): Promise<DbResult<Item[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  // A malformed space id can't hold anything — answer with an empty list, as
-  // for any other unknown space, so a mangled URL shows an empty page.
-  const space = parseInput(spaceIdInput, spaceId);
-  if (space.error) return { data: [], error: null };
-  return itemsDb.fetchItemsBySpace(userId, envId.data, space.data);
-}
-
-export async function fetchUnassignedItems(
-  environmentId: string
-): Promise<DbResult<Item[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  return itemsDb.fetchUnassignedItems(userId, envId.data);
-}
-
-/** Pass a null environmentId to search across every environment. */
-export async function searchItems(
-  environmentId: string | null,
-  query: string
-): Promise<DbResult<ItemWithSpace[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput.nullable(), environmentId);
-  if (envId.error) return envId;
-  const q = parseInput(searchQueryInput, query);
-  if (q.error) return q;
-  return itemsDb.searchItems(userId, envId.data, q.data);
-}
 
 export async function createItem(
   environmentId: string,
@@ -108,12 +66,3 @@ export async function deleteItem(itemId: string): Promise<DbResult<null>> {
   return itemsDb.deleteItem(userId, id.data);
 }
 
-export async function fetchAllTags(
-  environmentId: string
-): Promise<DbResult<string[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  const envId = parseInput(environmentIdInput, environmentId);
-  if (envId.error) return envId;
-  return itemsDb.fetchAllTags(userId, envId.data);
-}
