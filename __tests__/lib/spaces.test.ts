@@ -12,13 +12,15 @@ const h = vi.hoisted(() => {
     // and need each call answered differently. Falls back to resultsByTable.
     queueByTable: new Map<unknown, unknown[][]>(),
     error: null as Error | null,
+    // Rejects only inserts and updates — how a foreign key refusal looks.
+    writeError: null as Error | null,
     inserted: [] as Record<string, unknown>[],
     updated: [] as Record<string, unknown>[],
     executed: [] as unknown[],
     executeResult: [] as unknown[],
   };
 
-  function makeChain(initialTable?: unknown) {
+  function makeChain(initialTable?: unknown, isWrite = false) {
     let table = initialTable;
     const chain: Record<string, unknown> = {};
     for (const m of [
@@ -48,6 +50,7 @@ const h = vi.hoisted(() => {
       reject: (e: Error) => void
     ) => {
       if (state.error) return reject(state.error);
+      if (isWrite && state.writeError) return reject(state.writeError);
       const queue = state.queueByTable.get(table);
       if (queue && queue.length > 0) return resolve(queue.shift());
       return resolve(state.resultsByTable.get(table) ?? []);
@@ -57,8 +60,8 @@ const h = vi.hoisted(() => {
 
   const db = {
     select: () => makeChain(),
-    insert: (t: unknown) => makeChain(t),
-    update: (t: unknown) => makeChain(t),
+    insert: (t: unknown) => makeChain(t, true),
+    update: (t: unknown) => makeChain(t, true),
     delete: (t: unknown) => makeChain(t),
     // moveSpaceToEnvironment drops to raw SQL for its recursive CTE.
     execute: (q: unknown) => {
@@ -79,7 +82,6 @@ import {
   createSpace,
   updateSpace,
   deleteSpace,
-  fetchChildSpaces,
   moveSpaceToEnvironment,
 } from "@/lib/db/spaces";
 import { spaces } from "@/lib/db/schema";
@@ -87,6 +89,16 @@ import { spaces } from "@/lib/db/schema";
 const USER_ID = "user-123";
 const ENV_ID = "env-1";
 const OTHER_ENV_ID = "env-2";
+
+/** A foreign key refusal as Drizzle surfaces it: the pg error on `.cause`. */
+function fkError(constraint: string) {
+  return new Error("Failed query: …", {
+    cause: Object.assign(new Error("violates foreign key constraint"), {
+      code: "23503",
+      constraint,
+    }),
+  });
+}
 
 function makeSpace(overrides: Record<string, unknown> = {}) {
   return {
@@ -106,6 +118,7 @@ beforeEach(() => {
   h.state.resultsByTable = new Map();
   h.state.queueByTable = new Map();
   h.state.error = null;
+  h.state.writeError = null;
   h.state.inserted = [];
   h.state.updated = [];
   h.state.executed = [];
@@ -140,6 +153,28 @@ describe("fetchSpaceTree", () => {
     expect(result.data![0].children[0].id).toBe("child-1");
   });
 
+  it("surfaces spaces caught in a parent loop instead of dropping them", async () => {
+    // a → b → a: neither has a root above it.
+    const a = makeSpace({ id: "a", name: "A", parent_id: "b" });
+    const b = makeSpace({ id: "b", name: "B", parent_id: "a" });
+    const home = makeSpace({ id: "home", name: "Home" });
+    h.state.resultsByTable.set(spaces, [a, b, home]);
+
+    const result = await fetchSpaceTree(USER_ID, ENV_ID);
+
+    expect(result.error).toBeNull();
+    // Every space appears exactly once, and the loop is cut so the tree is
+    // finite (collecting it would recurse forever otherwise).
+    const ids: string[] = [];
+    const collect = (nodes: { id: string; children: typeof nodes }[]) =>
+      nodes.forEach((n) => {
+        ids.push(n.id);
+        collect(n.children);
+      });
+    collect(result.data!);
+    expect(ids.sort()).toEqual(["a", "b", "home"]);
+  });
+
   it("propagates database errors", async () => {
     h.state.error = new Error("DB error");
 
@@ -164,9 +199,8 @@ describe("createSpace", () => {
     expect(result.data?.name).toBe("Garage");
   });
 
-  it("refuses a parent in a different environment", async () => {
-    // parentIsInEnvironment filters on environment_id, so no row comes back.
-    h.state.resultsByTable.set(spaces, []);
+  it("reports a parent in a different environment", async () => {
+    h.state.writeError = fkError("spaces_parent_same_environment_fk");
 
     const result = await createSpace(USER_ID, ENV_ID, {
       name: "Shelf",
@@ -175,9 +209,18 @@ describe("createSpace", () => {
 
     expect(result.data).toBeNull();
     expect(result.error?.message).toBe(
-      "Parent space is in a different environment"
+      "Parent space is not in that environment"
     );
-    expect(h.state.inserted).toHaveLength(0);
+  });
+
+  it("reports an environment the user doesn't own", async () => {
+    h.state.writeError = fkError("spaces_environment_owner_fk");
+
+    const result = await createSpace(USER_ID, "someone-elses", {
+      name: "Shelf",
+    });
+
+    expect(result.error?.message).toBe("Environment not found");
   });
 });
 
@@ -202,10 +245,8 @@ describe("updateSpace", () => {
     expect(result.error?.message).toBe("Space not found");
   });
 
-  it("refuses to re-parent a space into another environment", async () => {
-    // First query resolves the space, second is the environment-filtered
-    // parent lookup, which finds nothing because the parent is elsewhere.
-    h.state.queueByTable.set(spaces, [[makeSpace()], []]);
+  it("reports a parent in another environment", async () => {
+    h.state.writeError = fkError("spaces_parent_same_environment_fk");
 
     const result = await updateSpace(USER_ID, "s-1", {
       parent_id: "parent-in-other-env",
@@ -213,28 +254,42 @@ describe("updateSpace", () => {
 
     expect(result.data).toBeNull();
     expect(result.error?.message).toBe(
-      "Parent space is in a different environment"
+      "Parent space is not in that environment"
     );
-    expect(h.state.updated).toHaveLength(0);
   });
 
   it("allows re-parenting within the same environment", async () => {
-    h.state.queueByTable.set(spaces, [
-      [makeSpace()],
-      [makeSpace({ id: "parent-1" })],
-      [makeSpace({ parent_id: "parent-1" })],
-    ]);
+    h.state.resultsByTable.set(spaces, [makeSpace({ parent_id: "parent-1" })]);
 
     const result = await updateSpace(USER_ID, "s-1", { parent_id: "parent-1" });
 
     expect(result.error).toBeNull();
     expect(result.data?.parent_id).toBe("parent-1");
   });
+
+  it("refuses to make a space its own parent", async () => {
+    const result = await updateSpace(USER_ID, "s-1", { parent_id: "s-1" });
+
+    expect(result.error?.message).toBe("A space cannot be its own parent");
+    expect(h.state.updated).toHaveLength(0);
+  });
+
+  it("refuses to re-parent a space into its own contents", async () => {
+    // The recursive subtree lookup finds the new parent inside the subtree.
+    h.state.executeResult = [{ id: "child-1" }];
+
+    const result = await updateSpace(USER_ID, "s-1", { parent_id: "child-1" });
+
+    expect(result.error?.message).toBe(
+      "A space cannot be moved into its own contents"
+    );
+    expect(h.state.updated).toHaveLength(0);
+  });
 });
 
 describe("moveSpaceToEnvironment", () => {
-  it("moves the subtree to the top level of another environment", async () => {
-    h.state.queueByTable.set(spaces, [[makeSpace()]]);
+  it("rewrites only the root row — the keys cascade the rest", async () => {
+    h.state.resultsByTable.set(spaces, [{ id: "s-1" }]);
 
     const result = await moveSpaceToEnvironment(
       USER_ID,
@@ -244,16 +299,15 @@ describe("moveSpaceToEnvironment", () => {
     );
 
     expect(result.error).toBeNull();
-    // One recursive statement carries the spaces and their items across.
-    expect(h.state.executed).toHaveLength(1);
+    expect(h.state.updated).toEqual([
+      { environment_id: OTHER_ENV_ID, parent_id: null },
+    ]);
+    // No subtree probe is needed for a top-level destination.
+    expect(h.state.executed).toHaveLength(0);
   });
 
-  it("refuses a destination that is not in the target environment", async () => {
-    h.state.queueByTable.set(spaces, [
-      [makeSpace()],
-      // The destination exists but still lives in the source environment.
-      [makeSpace({ id: "dest-1", environment_id: ENV_ID })],
-    ]);
+  it("reports a destination that is not in the target environment", async () => {
+    h.state.writeError = fkError("spaces_parent_same_environment_fk");
 
     const result = await moveSpaceToEnvironment(
       USER_ID,
@@ -263,16 +317,11 @@ describe("moveSpaceToEnvironment", () => {
     );
 
     expect(result.error?.message).toBe(
-      "Destination space is not in that environment"
+      "Parent space is not in that environment"
     );
-    expect(h.state.executed).toHaveLength(0);
   });
 
   it("refuses to move a space into its own contents", async () => {
-    h.state.queueByTable.set(spaces, [
-      [makeSpace()],
-      [makeSpace({ id: "dest-1", environment_id: OTHER_ENV_ID })],
-    ]);
     // The recursive subtree lookup finds the destination inside the subtree.
     h.state.executeResult = [{ id: "dest-1" }];
 
@@ -286,12 +335,11 @@ describe("moveSpaceToEnvironment", () => {
     expect(result.error?.message).toBe(
       "A space cannot be moved into its own contents"
     );
-    // Only the subtree probe ran — no move statement.
-    expect(h.state.executed).toHaveLength(1);
+    expect(h.state.updated).toHaveLength(0);
   });
 
   it("returns an error when the space is not the user's", async () => {
-    h.state.queueByTable.set(spaces, [[]]);
+    h.state.resultsByTable.set(spaces, []);
 
     const result = await moveSpaceToEnvironment(
       USER_ID,
@@ -301,7 +349,6 @@ describe("moveSpaceToEnvironment", () => {
     );
 
     expect(result.error?.message).toBe("Space not found");
-    expect(h.state.executed).toHaveLength(0);
   });
 });
 
@@ -319,26 +366,5 @@ describe("deleteSpace", () => {
     const result = await deleteSpace(USER_ID, "s-1");
 
     expect(result.error?.message).toBe("delete failed");
-  });
-});
-
-describe("fetchChildSpaces", () => {
-  it("returns children for a parent id", async () => {
-    const child = makeSpace({ id: "c-1", name: "Shelf", parent_id: "parent-1" });
-    h.state.resultsByTable.set(spaces, [child]);
-
-    const result = await fetchChildSpaces(USER_ID, ENV_ID, "parent-1");
-
-    expect(result.error).toBeNull();
-    expect(result.data).toEqual([child]);
-  });
-
-  it("returns root spaces when parentId is null", async () => {
-    h.state.resultsByTable.set(spaces, []);
-
-    const result = await fetchChildSpaces(USER_ID, ENV_ID, null);
-
-    expect(result.error).toBeNull();
-    expect(result.data).toEqual([]);
   });
 });

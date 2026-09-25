@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { nextCookies } from "better-auth/next-js";
 import { db } from "@/lib/db/client";
 import { sendEmail } from "@/lib/email";
 import * as schema from "@/lib/db/schema";
@@ -55,6 +56,23 @@ export const auth = betterAuth({
       }
     },
   },
+  session: {
+    // Every server action checks the session before it touches data. Without
+    // this, each check was a database query of its own, in series ahead of
+    // the one the action exists to run. The cache keeps a signed copy of the
+    // session in a cookie and only re-reads the database once it is older
+    // than maxAge — so a session revoked elsewhere (a password reset signs
+    // out every device) can keep working for up to that long.
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
+  },
+  // Lets auth calls made inside server actions set cookies — here, the
+  // refreshed session cache cookie once the old one expires. Without it the
+  // refreshed value is dropped and every later check goes back to the
+  // database. Must stay the last plugin.
+  plugins: [nextCookies()],
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
 });

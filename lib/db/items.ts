@@ -111,12 +111,36 @@ export async function fetchUnassignedItems(
 }
 
 /**
+ * Turns what the user typed into a prefix-matching tsquery.
+ *
+ * Search runs as you type, so each word is matched as a prefix: "screw" finds
+ * "screwdriver", where websearch_to_tsquery would only find the whole word.
+ * Every word must match. Only letters and digits survive, so nothing the user
+ * types can inject tsquery operators.
+ *
+ * @param query - The raw search string.
+ * @returns A tsquery such as "winter:* & coat:*", or null if there are no words.
+ */
+export function toPrefixQuery(query: string): string | null {
+  const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu);
+  return words ? words.map((w) => `${w}:*`).join(" & ") : null;
+}
+
+/** Rows from db.execute, whichever shape the driver returns them in. */
+function executedRows<T>(result: unknown): T[] {
+  return Array.isArray(result)
+    ? (result as T[])
+    : ((result as { rows?: T[] }).rows ?? []);
+}
+
+/**
  * Full-text searches items and their full ancestor breadcrumb for a user.
  *
  * Uses Postgres tsvector search on the pre-computed search_vector column which
- * covers item name, description, and tags. Fetches all spaces and environments
- * in parallel to build complete breadcrumb paths (e.g. "Bedroom › Under bed ›
- * Tub 1").
+ * covers item name, description, and tags, matching each word as a prefix.
+ * Alongside the items it fetches — in parallel — only the spaces on the
+ * breadcrumb paths of the matches (e.g. "Bedroom › Under bed › Tub 1"), and
+ * the environment names that label each result.
  *
  * @param userId - The authenticated user's ID.
  * @param environmentId - The environment to scope to, or null to search every
@@ -129,13 +153,17 @@ export async function searchItems(
   environmentId: string | null,
   query: string
 ): Promise<DbResult<ItemWithSpace[]>> {
-  if (!query.trim()) return { data: [], error: null };
+  const tsquery = toPrefixQuery(query);
+  if (!tsquery) return { data: [], error: null };
 
   try {
-    // Fetch matching items, the full space list, and the environment list in
-    // parallel. The space list is needed to walk the ancestor chain for
-    // breadcrumbs; the environment list labels each result's place.
-    const [itemRows, spaceRows, environmentRows] = await Promise.all([
+    const matches = sql`${items.search_vector} @@ to_tsquery('english', ${tsquery})`;
+    const inScope = environmentId
+      ? eq(items.environment_id, environmentId)
+      : undefined;
+
+    type SpaceRow = { id: string; name: string; parent_id: string | null };
+    const [itemRows, ancestorResult, environmentRows] = await Promise.all([
       db
         .select({
           ...itemColumns,
@@ -143,37 +171,47 @@ export async function searchItems(
         })
         .from(items)
         .leftJoin(spaces, eq(items.space_id, spaces.id))
-        .where(
-          and(
-            eq(items.user_id, userId),
-            environmentId ? eq(items.environment_id, environmentId) : undefined,
-            sql`${items.search_vector} @@ websearch_to_tsquery('english', ${query})`
-          )
-        )
+        .where(and(eq(items.user_id, userId), inScope, matches))
         .orderBy(asc(items.name)),
-      db
-        .select({
-          id: spaces.id,
-          name: spaces.name,
-          parent_id: spaces.parent_id,
-        })
-        .from(spaces)
-        .where(eq(spaces.user_id, userId)),
+      // The spaces holding a match and every space above them. UNION (not
+      // UNION ALL) discards rows already found, which also ends the walk if
+      // a parent chain ever loops.
+      db.execute<SpaceRow>(sql`
+        WITH RECURSIVE chain AS (
+          SELECT ${spaces.id}, ${spaces.name}, ${spaces.parent_id}
+          FROM ${spaces}
+          WHERE ${spaces.user_id} = ${userId}
+            AND ${spaces.id} IN (
+              SELECT ${items.space_id} FROM ${items}
+              WHERE ${and(eq(items.user_id, userId), inScope, matches)}
+            )
+          UNION
+          SELECT p.id, p.name, p.parent_id
+          FROM ${spaces} p JOIN chain c ON p.id = c.parent_id
+          WHERE p.user_id = ${userId}
+        )
+        SELECT id, name, parent_id FROM chain
+      `),
       db
         .select({ id: environments.id, name: environments.name })
         .from(environments)
         .where(eq(environments.user_id, userId)),
     ]);
 
-    type SpaceRow = { id: string; name: string; parent_id: string | null };
-    const spaceMap = new Map<string, SpaceRow>(spaceRows.map((s) => [s.id, s]));
+    const spaceMap = new Map<string, SpaceRow>(
+      executedRows<SpaceRow>(ancestorResult).map((s) => [s.id, s])
+    );
     const environmentMap = new Map(environmentRows.map((e) => [e.id, e]));
 
     function buildPath(spaceId: string | null): string | null {
       if (!spaceId) return null;
       const parts: string[] = [];
+      // `seen` stops the walk if the parent chain ever loops back on itself;
+      // without it one bad row would hang every search that matched beneath it.
+      const seen = new Set<string>();
       let cur: SpaceRow | undefined = spaceMap.get(spaceId);
-      while (cur) {
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
         parts.unshift(cur.name);
         cur = cur.parent_id ? spaceMap.get(cur.parent_id) : undefined;
       }
@@ -285,8 +323,10 @@ export async function fetchAllTags(
   environmentId: string
 ): Promise<DbResult<string[]>> {
   try {
+    // Deduplicated in the database, so only one row per distinct tag comes
+    // back rather than every item's tag list.
     const rows = await db
-      .select({ tags: items.tags })
+      .selectDistinct({ tag: sql<string>`unnest(${items.tags})` })
       .from(items)
       .where(
         and(
@@ -294,9 +334,7 @@ export async function fetchAllTags(
           eq(items.environment_id, environmentId)
         )
       );
-    const all = rows.flatMap((row) => row.tags ?? []);
-    const unique = [...new Set(all)].sort();
-    return { data: unique, error: null };
+    return { data: rows.map((r) => r.tag).sort(), error: null };
   } catch (e) {
     return toDbError(e);
   }

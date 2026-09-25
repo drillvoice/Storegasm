@@ -32,7 +32,7 @@ git push -u origin main
 
 1. Go to [neon.tech](https://neon.tech) and sign in.
 2. Click **New project**.
-3. Choose a name (e.g. `storegasm`) and select the region closest to your Vercel deployment.
+3. Choose a name (e.g. `storegasm`) and select the region closest to your Vercel deployment. Every page load makes database queries from Vercel's servers, so this matters more than the region closest to you. Vercel runs functions in Washington, D.C. (`iad1`) unless you change it, which pairs with Neon's **AWS US East (N. Virginia)**.
 4. On the project dashboard, click **Connect** and copy the **pooled** connection string (the host contains `-pooler`). You'll need it in Step 3.
 
 Neon's free tier suspends compute after inactivity but wakes automatically on the next query (~1 s) — no manual intervention needed.
@@ -67,6 +67,8 @@ npm run db:migrate
 This creates the auth tables (user, session, account, verification), the app tables (environments, spaces, items), and the full-text-search triggers. Migrations live in `drizzle/` and are generated from `lib/db/schema.ts`.
 
 `npm run build` runs this same step first, so a deploy always applies pending migrations before the new code goes live — a build can't leave the database a version behind the app. It is skipped (not failed) when `DATABASE_URL` is unset, and the build fails loudly if a migration does.
+
+Vercel **preview** builds skip it too, because by default they share production's `DATABASE_URL` — migrating there would apply an unmerged branch's schema to the production database. If your previews each get their own database (Neon's Vercel integration does this), set `MIGRATE_PREVIEWS=true` in the Preview environment to have them migrate as well.
 
 Upgrading an existing database from before v2.0.0? The `0002_environments` migration adds environments and backfills every existing space and item into a default one named "My Home", so nothing needs to be moved by hand.
 

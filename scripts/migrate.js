@@ -9,7 +9,8 @@
 // leave the database a version behind the code.
 //
 // Skipped (not failed) when DATABASE_URL is absent, so `npm run build` still
-// works locally and in CI without a database. Any other failure is fatal —
+// works locally and in CI without a database, and on Vercel preview builds (see
+// below). Any other failure is fatal —
 // shipping a build against a database that rejected its own migrations is the
 // exact situation this script exists to prevent.
 'use strict';
@@ -32,6 +33,26 @@ if (!process.env.DATABASE_URL && fs.existsSync(localEnv)) {
 
 if (!process.env.DATABASE_URL) {
   console.log('[migrate] DATABASE_URL not set — skipping migrations.');
+  process.exit(0);
+}
+
+// Vercel builds every pushed branch as a preview, and an environment variable
+// added with the default scope is shared by production and previews alike. If
+// DATABASE_URL is one of those, migrating here would apply an unreviewed
+// branch's schema changes to the production database before it merged. So
+// previews don't migrate unless told their database is their own — which is
+// the case with Neon's Vercel integration, which gives each preview a branch
+// of the database. Setting MIGRATE_PREVIEWS=true opts in.
+if (
+  process.env.VERCEL_ENV &&
+  process.env.VERCEL_ENV !== 'production' &&
+  process.env.MIGRATE_PREVIEWS !== 'true'
+) {
+  console.log(
+    `[migrate] Vercel ${process.env.VERCEL_ENV} build — skipping migrations so ` +
+      'this branch cannot change the production database. Set ' +
+      'MIGRATE_PREVIEWS=true if previews have a database of their own.'
+  );
   process.exit(0);
 }
 

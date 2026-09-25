@@ -2,14 +2,15 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchSpaceTree,
   createSpace,
   updateSpace,
   deleteSpace,
   moveSpace,
 } from "@/lib/actions/spaces";
+import { api } from "@/lib/api/client";
 import { useUserId } from "@/hooks/useUserId";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
+import { queryKeys } from "@/lib/query-keys";
 import type {
   SpaceNode,
   CreateSpacePayload,
@@ -100,16 +101,12 @@ export function useSpaces(): UseSpacesResult {
   const userId = useUserId();
   const { environmentId } = useActiveEnvironment();
   const queryClient = useQueryClient();
-  const key = ["spaces", userId, environmentId];
+  const key = queryKeys.spaces(userId, environmentId);
 
   const query = useQuery({
     queryKey: key,
     enabled: !!userId && !!environmentId,
-    queryFn: async () => {
-      const result = await fetchSpaceTree(environmentId!);
-      if (result.error) throw new Error(result.error.message);
-      return result.data;
-    },
+    queryFn: () => api.spaceTree(environmentId!),
   });
 
   const addMutation = useMutation({

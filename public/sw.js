@@ -2,7 +2,7 @@
 
 // Managed automatically — run `npm version patch|minor|major` to bump.
 // sync-version.js updates this to match package.json before each release commit.
-const CACHE_VERSION = 'v2.1.1';
+const CACHE_VERSION = 'v2.4.1';
 const CACHE_NAME = `storegasm-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -39,12 +39,10 @@ self.addEventListener('activate', (event) => {
 function shouldBypass(url, request) {
   if (request.method !== 'GET') return true;
   if (!url.protocol.startsWith('http')) return true;
-  // Never intercept Supabase or any cross-origin requests.
+  // Never intercept cross-origin requests.
   if (url.origin !== self.location.origin) return true;
-  // Let Next.js API routes always hit the network.
+  // API routes — Better Auth's /api/auth among them — always hit the network.
   if (url.pathname.startsWith('/api/')) return true;
-  // Let auth callbacks always hit the network.
-  if (url.pathname.startsWith('/auth/')) return true;
   return false;
 }
 

@@ -10,11 +10,17 @@
  *
  * An environment is a place that owns a space tree — a house, an office, a
  * studio. environment_id is denormalised onto spaces AND items so every scoped
- * query is a plain indexed filter rather than an ancestor walk. Two invariants
- * are enforced in lib/db (Postgres can't express either without triggers):
- * a space's parent is always in the same environment, and an item's
- * environment always matches its space's (or, when unassigned, the environment
- * it was created in).
+ * query is a plain indexed filter rather than an ancestor walk. The rules that
+ * keep the copies honest are composite foreign keys, so the database refuses
+ * to break them whatever the code does:
+ *  - (environment_id, user_id) → environments(id, user_id): a space or item
+ *    can only sit in an environment its owner owns.
+ *  - spaces (parent_id, environment_id) → spaces(id, environment_id): a
+ *    space's parent is in the same environment.
+ *  - items (space_id, environment_id) → spaces(id, environment_id): an item is
+ *    in its space's environment (unassigned items keep the one they were in).
+ * The last two cascade on update, so changing one space's environment_id
+ * carries its whole subtree and every item inside it along.
  *
  * The items.search_vector column is trigger-maintained (see the custom SQL
  * migration) because array_to_string() is not immutable, which generated
@@ -26,12 +32,13 @@ import {
   boolean,
   check,
   customType,
+  foreignKey,
   index,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 const tsvector = customType<{ data: string }>({
@@ -153,6 +160,8 @@ export const environments = pgTable(
   },
   (t) => [
     index("environments_user_id_idx").on(t.user_id),
+    // Target of the (environment_id, user_id) foreign keys below.
+    unique("environments_id_user_id_unique").on(t.id, t.user_id),
     check(
       "environments_name_length",
       sql`char_length(name) > 0 AND char_length(name) <= 200`
@@ -171,14 +180,10 @@ export const spaces = pgTable(
     user_id: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    environment_id: uuid("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
+    environment_id: uuid("environment_id").notNull(),
     name: text("name").notNull(),
     description: text("description"),
-    parent_id: uuid("parent_id").references((): AnyPgColumn => spaces.id, {
-      onDelete: "cascade",
-    }),
+    parent_id: uuid("parent_id"),
     created_at: timestamp("created_at", { withTimezone: true, mode: "string" })
       .notNull()
       .defaultNow(),
@@ -190,6 +195,20 @@ export const spaces = pgTable(
     ),
   },
   (t) => [
+    // Target of the (…, environment_id) foreign keys from child spaces and items.
+    unique("spaces_id_environment_id_unique").on(t.id, t.environment_id),
+    foreignKey({
+      name: "spaces_environment_owner_fk",
+      columns: [t.environment_id, t.user_id],
+      foreignColumns: [environments.id, environments.user_id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "spaces_parent_same_environment_fk",
+      columns: [t.parent_id, t.environment_id],
+      foreignColumns: [t.id, t.environment_id],
+    })
+      .onDelete("cascade")
+      .onUpdate("cascade"),
     index("spaces_user_id_idx").on(t.user_id),
     index("spaces_environment_id_idx").on(t.environment_id),
     index("spaces_parent_id_idx").on(t.parent_id),
@@ -212,9 +231,10 @@ export const items = pgTable(
     user_id: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    environment_id: uuid("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
+    environment_id: uuid("environment_id").notNull(),
+    // Deleting a space unassigns its items rather than deleting them. This
+    // single-column key does that; the composite key below only checks that
+    // the environments agree (and follows a space that moves).
     space_id: uuid("space_id").references(() => spaces.id, {
       onDelete: "set null",
     }),
@@ -231,6 +251,16 @@ export const items = pgTable(
       .defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: "items_environment_owner_fk",
+      columns: [t.environment_id, t.user_id],
+      foreignColumns: [environments.id, environments.user_id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "items_space_same_environment_fk",
+      columns: [t.space_id, t.environment_id],
+      foreignColumns: [spaces.id, spaces.environment_id],
+    }).onUpdate("cascade"),
     index("items_user_id_idx").on(t.user_id),
     index("items_environment_id_idx").on(t.environment_id),
     index("items_space_id_idx").on(t.space_id),

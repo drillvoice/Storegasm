@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Globe, Search } from "lucide-react";
 import { useItemSearch, useAllTags } from "@/hooks/useItems";
 import { useSpaces } from "@/hooks/useSpaces";
-import { useUserId } from "@/hooks/useUserId";
+import { useItemMutations } from "@/hooks/useItemMutations";
 import { useActiveEnvironment } from "@/components/EnvironmentProvider";
 import { ItemCard } from "@/components/items/ItemCard";
 import { ItemForm } from "@/components/items/ItemForm";
@@ -13,7 +12,6 @@ import { MoveItemDialog } from "@/components/items/MoveItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { updateItem, deleteItem } from "@/lib/actions/items";
 import type { ItemWithSpace, Item } from "@/lib/types";
 
 /**
@@ -29,36 +27,13 @@ import type { ItemWithSpace, Item } from "@/lib/types";
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [allEnvironments, setAllEnvironments] = useState(false);
-  const {
-    results: searchResults,
-    loading,
-    error,
-  } = useItemSearch(query, allEnvironments);
+  const { results, loading, error } = useItemSearch(query, allEnvironments);
   const { spaces } = useSpaces();
   const { tags: allTags } = useAllTags();
   const { environment, environments, environmentId } = useActiveEnvironment();
-  const userId = useUserId();
-  const queryClient = useQueryClient();
-
-  // This page calls the item actions directly rather than through useItems, so
-  // it has to invalidate the caches those mutations affect itself — otherwise
-  // the dashboard keeps showing an item edited or deleted from here.
-  function invalidateItemCaches() {
-    queryClient.invalidateQueries({ queryKey: ["items", userId] });
-    queryClient.invalidateQueries({ queryKey: ["tags", userId] });
-    queryClient.invalidateQueries({ queryKey: ["search", userId] });
-  }
-
-  // Local mirror of search results — updated optimistically on edit/delete
-  // so the list reflects mutations without waiting for the debounced re-fetch.
-  // Synced from the hook during render (not an effect) so it tracks new results
-  // without an extra commit.
-  const [results, setResults] = useState<ItemWithSpace[]>([]);
-  const [prevSearch, setPrevSearch] = useState(searchResults);
-  if (searchResults !== prevSearch) {
-    setPrevSearch(searchResults);
-    setResults(searchResults);
-  }
+  // Patches the search results in place and invalidates the other caches an
+  // item change touches, so the dashboard reflects edits made from here.
+  const { editItem, removeItem } = useItemMutations();
 
   const [itemFormOpen, setItemFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -67,8 +42,7 @@ export default function SearchPage() {
   const [movingItem, setMovingItem] = useState<Item | null>(null);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const pendingAction = useRef<() => void>(() => {});
+  const [deletingItem, setDeletingItem] = useState<Item | null>(null);
 
   function openEditItem(item: Item) {
     setEditingItem(item);
@@ -80,25 +54,8 @@ export default function SearchPage() {
     setMoveDialogOpen(true);
   }
 
-  async function handleMoveItem(itemId: string, spaceId: string | null): Promise<string | null> {
-    const result = await updateItem(itemId, { space_id: spaceId });
-    if (result.error) return result.error.message;
-    setResults((prev) =>
-      prev.map((r) => r.id === itemId ? { ...r, space_id: spaceId, space: null, space_path: null } : r)
-    );
-    invalidateItemCaches();
-    return null;
-  }
-
   function handleDeleteItem(item: Item) {
-    setConfirmTitle(`Delete "${item.name}"?`);
-    pendingAction.current = async () => {
-      const result = await deleteItem(item.id);
-      if (!result.error) {
-        setResults((prev) => prev.filter((r) => r.id !== item.id));
-        invalidateItemCaches();
-      }
-    };
+    setDeletingItem(item);
     setConfirmOpen(true);
   }
 
@@ -109,13 +66,7 @@ export default function SearchPage() {
     tags: string[];
   }): Promise<string | null> {
     if (!editingItem) return "No item selected";
-    const result = await updateItem(editingItem.id, values);
-    if (result.error) return result.error.message;
-    setResults((prev) =>
-      prev.map((r) => (r.id === editingItem.id ? { ...r, ...values } : r))
-    );
-    invalidateItemCaches();
-    return null;
+    return editItem(editingItem.id, values);
   }
 
   // An all-environments search can surface an item filed somewhere the active
@@ -225,14 +176,16 @@ export default function SearchPage() {
         onOpenChange={setMoveDialogOpen}
         item={movingItem}
         allSpaces={spaces}
-        onMove={handleMoveItem}
+        onMove={(itemId, spaceId) => editItem(itemId, { space_id: spaceId })}
       />
 
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={confirmTitle}
-        onConfirm={() => pendingAction.current()}
+        title={deletingItem ? `Delete "${deletingItem.name}"?` : ""}
+        onConfirm={() => {
+          if (deletingItem) removeItem(deletingItem.id);
+        }}
       />
     </div>
   );

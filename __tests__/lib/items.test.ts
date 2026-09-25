@@ -61,10 +61,14 @@ const h = vi.hoisted(() => {
       state.selectCount++;
       return makeChain();
     },
+    selectDistinct: () => {
+      state.selectCount++;
+      return makeChain();
+    },
     insert: (t: unknown) => makeChain(t),
     update: (t: unknown) => makeChain(t),
     delete: (t: unknown) => makeChain(t),
-    // moveSpaceToEnvironment drops to raw SQL for its recursive CTE.
+    // searchItems drops to raw SQL for its recursive breadcrumb query.
     execute: (q: unknown) => {
       state.executed.push(q);
       if (state.error) return Promise.reject(state.error);
@@ -85,6 +89,8 @@ import {
   updateItem,
   deleteItem,
   searchItems,
+  fetchAllTags,
+  toPrefixQuery,
 } from "@/lib/db/items";
 import { environments, items, spaces } from "@/lib/db/schema";
 
@@ -143,7 +149,42 @@ describe("fetchUnassignedItems", () => {
   });
 });
 
+describe("toPrefixQuery", () => {
+  it("matches every word as a prefix", () => {
+    expect(toPrefixQuery("Winter  coat")).toBe("winter:* & coat:*");
+  });
+
+  it("drops tsquery operators and punctuation", () => {
+    expect(toPrefixQuery("usb-c & !cable:*")).toBe("usb:* & c:* & cable:*");
+  });
+
+  it("keeps non-ASCII letters", () => {
+    expect(toPrefixQuery("Café")).toBe("café:*");
+  });
+
+  it("returns null when there are no words", () => {
+    expect(toPrefixQuery("  ?! ")).toBeNull();
+  });
+});
+
+describe("fetchAllTags", () => {
+  it("sorts the distinct tags the database returns", async () => {
+    h.state.resultsByTable.set(items, [{ tag: "tools" }, { tag: "clothes" }]);
+
+    const result = await fetchAllTags(USER_ID, ENV_ID);
+
+    expect(result.data).toEqual(["clothes", "tools"]);
+  });
+});
+
 describe("searchItems", () => {
+  it("returns empty results for a query with no words without calling the DB", async () => {
+    const result = await searchItems(USER_ID, ENV_ID, "?! -- ");
+
+    expect(result.data).toEqual([]);
+    expect(h.state.selectCount).toBe(0);
+  });
+
   it("returns empty results for blank query without calling the DB", async () => {
     const result = await searchItems(USER_ID, ENV_ID, "   ");
 
@@ -159,11 +200,12 @@ describe("searchItems", () => {
         space: { id: "tub-1", name: "Tub 1" },
       }),
     ]);
-    h.state.resultsByTable.set(spaces, [
+    // The recursive query returns the matched space and its ancestors.
+    h.state.executeResult = [
       { id: "bedroom", name: "Bedroom", parent_id: null },
       { id: "under-bed", name: "Under bed", parent_id: "bedroom" },
       { id: "tub-1", name: "Tub 1", parent_id: "under-bed" },
-    ]);
+    ];
     h.state.resultsByTable.set(environments, [
       { id: ENV_ID, name: "My Home" },
     ]);
@@ -182,6 +224,21 @@ describe("searchItems", () => {
     expect(result.data![0]).not.toHaveProperty("search_vector");
   });
 
+  it("stops walking the breadcrumb if the parent chain loops", async () => {
+    h.state.resultsByTable.set(items, [
+      makeItem({ space_id: "a", space: { id: "a", name: "A" } }),
+    ]);
+    h.state.executeResult = [
+      { id: "a", name: "A", parent_id: "b" },
+      { id: "b", name: "B", parent_id: "a" },
+    ];
+
+    const result = await searchItems(USER_ID, ENV_ID, "coats");
+
+    expect(result.error).toBeNull();
+    expect(result.data![0].space_path).toBe("B › A");
+  });
+
   it("labels each result with its environment when searching all of them", async () => {
     h.state.resultsByTable.set(items, [
       makeItem({ id: "item-1", space_id: null, space: null }),
@@ -192,7 +249,6 @@ describe("searchItems", () => {
         space: null,
       }),
     ]);
-    h.state.resultsByTable.set(spaces, []);
     h.state.resultsByTable.set(environments, [
       { id: ENV_ID, name: "My Home" },
       { id: OTHER_ENV_ID, name: "New house" },
@@ -210,7 +266,6 @@ describe("searchItems", () => {
     h.state.resultsByTable.set(items, [
       makeItem({ id: "item-2", name: "Loose cable", space_id: null, space: null }),
     ]);
-    h.state.resultsByTable.set(spaces, []);
 
     const result = await searchItems(USER_ID, ENV_ID, "cable");
 

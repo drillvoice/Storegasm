@@ -11,6 +11,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.4.1] - 2026-09-25
+
+### Changed
+- **Switching environment and refreshing after an edit are faster.** These loads used to be sent to the server one after another; now they run at the same time. Switching environment, for example, fetches the space tree, the unassigned items and the tag list together.
+
+### Added
+- Automated checks on every pull request: lint, type checking, unit tests and a build. They also apply every migration to an empty Postgres database, confirm the migrations match the schema, and test the data layer against the result.
+
+## [2.4.0] - 2026-09-24
+
+### Added
+- **Search matches as you type.** Each word you type now matches the start of a word, so "screw" finds "Screwdriver set" before you've finished typing it. Every word has to match.
+
+### Changed
+- Search is lighter on the database. Breadcrumbs are built from only the spaces above the matches, not from every space you have, and the tag list is de-duplicated by the database instead of in the app.
+- A space's page shows "Loading…" until the space is known, and a "This space doesn't exist" page for a space that's been deleted or a mistyped link. Before, it showed a heading reading "Space" above "No items in this space yet".
+
+### Fixed
+- Moving an item from the search page showed it as unassigned until the next search. It now shows its new location.
+
+## [2.3.0] - 2026-09-24
+
+### Changed
+- **Pages arrive with their contents.** The dashboard and space pages are now rendered on the server with your spaces and items already in them. Before, the page loaded empty and then made several requests one after another before anything appeared. Moving between pages also shows what's already loaded straight away and refreshes it in the background.
+- The environment you're viewing is now remembered in a cookie instead of the browser's local storage, so the server knows which environment to render. The environment you had selected carries over automatically.
+
+### Fixed
+- The offline service worker now installs even when you first land on the sign-in page. Its script was being redirected to the sign-in page, which browsers refuse to register.
+
+## [2.2.0] - 2026-09-24
+
+### Changed
+- **The database enforces the environment rules.** A space or item can only be in an environment its owner owns, a space's parent must be in the same environment, and an item must be in its space's environment. These used to be checked by the app before every write, and are now foreign keys, so no write can break them. Most requests make one fewer database round trip as a result, and moving a space to another environment is a single update that the database carries through to everything inside it.
+- The migration (applied automatically on deploy) first repairs any rows that already break these rules, so it applies cleanly to existing data. On a healthy database it changes nothing.
+
+### Fixed
+- An environment's "last updated" time now changes when it is renamed or archived. It previously stayed at the time the environment was created.
+- Opening a brand-new account in two tabs at once can no longer create two "My Home" environments.
+
+## [2.1.3] - 2026-09-24
+
+### Changed
+- **Pages load faster.** Every request used to check the session with a database query before doing its real work. That check now reads a signed session cookie and goes to the database at most every five minutes. The browser also no longer asks the server who you are before loading anything: the page is served already knowing. One side effect is that a session signed out from another device, for example by a password reset, can keep working for up to five minutes.
+
+## [2.1.2] - 2026-09-24
+
+### Fixed
+- **Server actions validate what they're sent.** Every action now checks its arguments before touching the database. Previously an edit request could carry fields the app never sends — such as the owner or the environment of a row — and they were written as-is. Anything unexpected is now refused with a message saying what was wrong.
+- **A space can no longer be moved inside itself.** Editing a space's parent now refuses the space itself or anything nested in it. The form already hid those choices, but two tabs working from out-of-date trees could together create a loop, after which those spaces vanished from the dashboard and any search matching an item inside them hung. Any loop that already exists is broken on display: its spaces appear at the top level, and search shows their breadcrumbs.
+
+### Changed
+- **Vercel preview builds no longer apply migrations.** A preview shares the production `DATABASE_URL` by default, so migrating there would apply an unmerged branch's schema to production. Set `MIGRATE_PREVIEWS=true` for the Preview environment if your previews have their own database (as with Neon's Vercel integration). Production builds migrate as before.
+
 ## [2.1.1] - 2026-09-23
 
 ### Fixed

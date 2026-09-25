@@ -4,13 +4,18 @@
  * Server actions for environments.
  *
  * Each action resolves the authenticated user from the Better Auth session —
- * the userId is never accepted from the client. This is the app-level
- * replacement for the RLS policies the schema had on Supabase.
+ * the userId is never accepted from the client — and parses every argument it
+ * does accept against lib/validation.ts before it reaches the data layer.
  */
 
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import * as environmentsDb from "@/lib/db/environments";
+import { getSessionUserId, NOT_AUTHENTICATED } from "@/lib/session";
+import {
+  createEnvironmentInput,
+  environmentIdInput,
+  parseInput,
+  updateEnvironmentInput,
+} from "@/lib/validation";
 import type {
   Environment,
   CreateEnvironmentPayload,
@@ -18,32 +23,14 @@ import type {
   DbResult,
 } from "@/lib/types";
 
-async function getSessionUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  return session?.user.id ?? null;
-}
-
-const NOT_AUTHENTICATED = {
-  data: null,
-  error: { message: "Not authenticated" },
-} as const;
-
-/**
- * Returns the user's environments, creating a default one if they have none,
- * so the client always has a scope to work in.
- */
-export async function fetchEnvironments(): Promise<DbResult<Environment[]>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.ensureDefaultEnvironment(userId);
-}
-
 export async function createEnvironment(
   payload: CreateEnvironmentPayload
 ): Promise<DbResult<Environment>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.createEnvironment(userId, payload);
+  const input = parseInput(createEnvironmentInput, payload);
+  if (input.error) return input;
+  return environmentsDb.createEnvironment(userId, input.data);
 }
 
 export async function updateEnvironment(
@@ -52,7 +39,11 @@ export async function updateEnvironment(
 ): Promise<DbResult<Environment>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.updateEnvironment(userId, environmentId, payload);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  const input = parseInput(updateEnvironmentInput, payload);
+  if (input.error) return input;
+  return environmentsDb.updateEnvironment(userId, envId.data, input.data);
 }
 
 export async function deleteEnvironment(
@@ -60,13 +51,8 @@ export async function deleteEnvironment(
 ): Promise<DbResult<null>> {
   const userId = await getSessionUserId();
   if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.deleteEnvironment(userId, environmentId);
+  const envId = parseInput(environmentIdInput, environmentId);
+  if (envId.error) return envId;
+  return environmentsDb.deleteEnvironment(userId, envId.data);
 }
 
-export async function countEnvironmentContents(
-  environmentId: string
-): Promise<DbResult<{ spaces: number; items: number }>> {
-  const userId = await getSessionUserId();
-  if (!userId) return NOT_AUTHENTICATED;
-  return environmentsDb.countEnvironmentContents(userId, environmentId);
-}

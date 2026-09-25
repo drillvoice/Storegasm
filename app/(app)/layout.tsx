@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { getEnvironments, getSelectedEnvironmentId } from "@/lib/server-data";
+import { getSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/AppShell";
 import { EnvironmentSwitcher } from "@/components/environments/EnvironmentSwitcher";
@@ -15,18 +15,32 @@ import { Search } from "lucide-react";
  * Verifies the user session server-side and redirects to /login if no session
  * exists. Renders the top nav (environment switcher + search link + sign-out)
  * around all child pages.
+ *
+ * Also loads the environment list and reads the remembered selection, so the
+ * switcher renders with the right name in the server's HTML and every page's
+ * data hooks have an environment to key on from their first render.
  */
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getSession();
 
   if (!session) redirect("/login");
 
+  const userId = session.user.id;
+  const [environments, selectedId] = await Promise.all([
+    getEnvironments(userId),
+    getSelectedEnvironmentId(),
+  ]);
+
   return (
-    <AppShell>
+    <AppShell
+      userId={userId}
+      initialEnvironments={environments.error ? null : environments.data}
+      initialEnvironmentId={selectedId}
+    >
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-2 px-4">

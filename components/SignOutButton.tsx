@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { ENVIRONMENT_COOKIE } from "@/lib/environment-scope";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -25,6 +26,7 @@ export function SignOutButton() {
     } catch {
       // localStorage unavailable — nothing to clear.
     }
+    document.cookie = `${ENVIRONMENT_COOKIE}=; path=/; max-age=0`;
     router.push("/login");
     router.refresh();
   }

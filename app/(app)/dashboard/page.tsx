@@ -1,253 +1,35 @@
-"use client";
-
-import { useState, useRef } from "react";
-import dynamic from "next/dynamic";
-import { Plus } from "lucide-react";
-import { useSpaces } from "@/hooks/useSpaces";
-import { useItems, useAllTags } from "@/hooks/useItems";
-import { useActiveEnvironment } from "@/components/EnvironmentProvider";
-import { SpaceTreemap } from "@/components/spaces/SpaceTreemap";
-import { ItemCard } from "@/components/items/ItemCard";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import type { SpaceNode, Item } from "@/lib/types";
-
-const SpaceForm = dynamic(() =>
-  import("@/components/spaces/SpaceForm").then((m) => m.SpaceForm)
-);
-const ItemForm = dynamic(() =>
-  import("@/components/items/ItemForm").then((m) => m.ItemForm)
-);
-const MoveItemDialog = dynamic(() =>
-  import("@/components/items/MoveItemDialog").then((m) => m.MoveItemDialog)
-);
-const MoveSpaceDialog = dynamic(() =>
-  import("@/components/spaces/MoveSpaceDialog").then((m) => m.MoveSpaceDialog)
-);
-const ConfirmDialog = dynamic(() =>
-  import("@/components/ui/confirm-dialog").then((m) => m.ConfirmDialog)
-);
+import { redirect } from "next/navigation";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { DashboardView } from "@/components/dashboard/DashboardView";
+import {
+  getScopedEnvironmentId,
+  makeServerQueryClient,
+  prefetchItems,
+  prefetchSpaceTree,
+  prefetchTags,
+} from "@/lib/server-data";
+import { getSessionUserId } from "@/lib/session";
 
 /**
- * Dashboard page — the space tree and unassigned items of the environment
- * currently in scope.
- *
- * All mutations go through the useSpaces and useItems hooks which handle
- * refresh after each change.
+ * Dashboard page. Starts the space tree, unassigned items and tag list loading
+ * on the server — in parallel, and without waiting for them — and streams them
+ * to DashboardView's hooks.
  */
-export default function DashboardPage() {
-  const { environment, error: environmentError } = useActiveEnvironment();
-  const { spaces, loading, addSpace, editSpace, moveSpaceTo, removeSpace } =
-    useSpaces();
-  const { items: unassigned, addItem, editItem, removeItem } = useItems(null);
-  const { tags: allTags } = useAllTags();
+export default async function DashboardPage() {
+  const userId = await getSessionUserId();
+  if (!userId) redirect("/login");
 
-  // Space form state
-  const [spaceFormOpen, setSpaceFormOpen] = useState(false);
-  const [editingSpace, setEditingSpace] = useState<SpaceNode | null>(null);
-  const [defaultParentId, setDefaultParentId] = useState<string | null>(null);
-
-  // Item form state
-  const [itemFormOpen, setItemFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-
-  // Move dialog state — one for items, one for whole spaces
-  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [movingItem, setMovingItem] = useState<Item | null>(null);
-  const [moveSpaceOpen, setMoveSpaceOpen] = useState(false);
-  const [movingSpace, setMovingSpace] = useState<SpaceNode | null>(null);
-
-  // Confirm dialog state — one dialog handles both space and item deletes
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const pendingAction = useRef<() => void>(() => {});
-
-  function askConfirm(title: string, action: () => void) {
-    setConfirmTitle(title);
-    pendingAction.current = action;
-    setConfirmOpen(true);
-  }
-
-  function openAddRoot() {
-    setEditingSpace(null);
-    setDefaultParentId(null);
-    setSpaceFormOpen(true);
-  }
-
-  function openAddChild(parentId: string) {
-    setEditingSpace(null);
-    setDefaultParentId(parentId);
-    setSpaceFormOpen(true);
-  }
-
-  function openEditSpace(node: SpaceNode) {
-    setEditingSpace(node);
-    setDefaultParentId(null);
-    setSpaceFormOpen(true);
-  }
-
-  function openMoveSpace(node: SpaceNode) {
-    setMovingSpace(node);
-    setMoveSpaceOpen(true);
-  }
-
-  function handleDeleteSpace(node: SpaceNode) {
-    askConfirm(
-      `Delete "${node.name}" and all its contents?`,
-      () => removeSpace(node.id)
-    );
-  }
-
-  async function handleSpaceSubmit(values: {
-    name: string;
-    description: string | null;
-    parent_id: string | null;
-  }) {
-    if (editingSpace) {
-      return editSpace(editingSpace.id, values);
-    }
-    return addSpace(values);
-  }
-
-  function openAddItem() {
-    setEditingItem(null);
-    setItemFormOpen(true);
-  }
-
-  function openEditItem(item: Item) {
-    setEditingItem(item);
-    setItemFormOpen(true);
-  }
-
-  function openMoveItem(item: Item) {
-    setMovingItem(item);
-    setMoveDialogOpen(true);
-  }
-
-  async function handleMoveItem(itemId: string, spaceId: string | null) {
-    return editItem(itemId, { space_id: spaceId });
-  }
-
-  function handleDeleteItem(item: Item) {
-    askConfirm(`Delete "${item.name}"?`, () => removeItem(item.id));
-  }
-
-  async function handleItemSubmit(values: {
-    name: string;
-    description: string | null;
-    space_id: string | null;
-    tags: string[];
-  }) {
-    if (editingItem) {
-      return editItem(editingItem.id, values);
-    }
-    return addItem(values);
+  const queryClient = makeServerQueryClient();
+  const environmentId = await getScopedEnvironmentId(userId);
+  if (environmentId) {
+    prefetchSpaceTree(queryClient, userId, environmentId);
+    prefetchItems(queryClient, userId, environmentId, null);
+    prefetchTags(queryClient, userId, environmentId);
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight">
-          {environment?.name ?? "Your spaces"}
-        </h1>
-        <Button onClick={openAddRoot} size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          Add space
-        </Button>
-      </div>
-
-      {environmentError ? (
-        // Without an environment nothing below can be scoped, so say what went
-        // wrong instead of showing an empty tree or a spinner that never ends.
-        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-          <p className="font-medium">Couldn&apos;t load your environments</p>
-          <p className="mt-1 text-sm text-muted-foreground">{environmentError}</p>
-        </div>
-      ) : loading ? (
-        <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground animate-pulse">Loading…</p>
-        </div>
-      ) : (
-        <>
-          <SpaceTreemap
-            spaces={spaces}
-            onAddRoot={openAddRoot}
-            onAddChild={openAddChild}
-            onEdit={openEditSpace}
-            onMove={openMoveSpace}
-            onDelete={handleDeleteSpace}
-          />
-
-          {unassigned.length > 0 && (
-            <>
-              <Separator />
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Unassigned items</h2>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {unassigned.map((item) => (
-                    <ItemCard
-                      key={item.id}
-                      item={item}
-                      onEdit={openEditItem}
-                      onMove={openMoveItem}
-                      onDelete={handleDeleteItem}
-                    />
-                  ))}
-                </div>
-              </section>
-            </>
-          )}
-        </>
-      )}
-
-      <div className="fixed bottom-6 right-6">
-        <Button onClick={openAddItem} size="lg" className="rounded-full shadow-lg">
-          <Plus className="mr-2 h-5 w-5" />
-          Add item
-        </Button>
-      </div>
-
-      <SpaceForm
-        open={spaceFormOpen}
-        onOpenChange={setSpaceFormOpen}
-        initialValues={editingSpace ?? undefined}
-        defaultParentId={defaultParentId}
-        allSpaces={spaces}
-        onSubmit={handleSpaceSubmit}
-      />
-
-      <ItemForm
-        open={itemFormOpen}
-        onOpenChange={setItemFormOpen}
-        initialValues={editingItem ?? undefined}
-        allSpaces={spaces}
-        existingTags={allTags}
-        onSubmit={handleItemSubmit}
-      />
-
-      <MoveItemDialog
-        open={moveDialogOpen}
-        onOpenChange={setMoveDialogOpen}
-        item={movingItem}
-        allSpaces={spaces}
-        onMove={handleMoveItem}
-      />
-
-      <MoveSpaceDialog
-        open={moveSpaceOpen}
-        onOpenChange={setMoveSpaceOpen}
-        space={movingSpace}
-        onMove={moveSpaceTo}
-      />
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={confirmTitle}
-        onConfirm={() => pendingAction.current()}
-      />
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <DashboardView />
+    </HydrationBoundary>
   );
 }

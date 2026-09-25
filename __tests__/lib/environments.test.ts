@@ -14,6 +14,7 @@ const h = vi.hoisted(() => {
     inserted: [] as Record<string, unknown>[],
     updated: [] as Record<string, unknown>[],
     deleted: 0,
+    batches: [] as unknown[][],
   };
 
   function makeChain(initialTable?: unknown) {
@@ -54,6 +55,13 @@ const h = vi.hoisted(() => {
       state.deleted++;
       return makeChain(t);
     },
+    // ensureDefaultEnvironment's locked insert.
+    execute: (q: unknown) => q,
+    batch: (queries: unknown[]) => {
+      state.batches.push(queries);
+      if (state.error) return Promise.reject(state.error);
+      return Promise.resolve([]);
+    },
   };
 
   return { state, db };
@@ -65,7 +73,6 @@ vi.mock("@/lib/db/client", () => ({ db: h.db }));
 import {
   fetchEnvironments,
   ensureDefaultEnvironment,
-  assertOwnedEnvironment,
   createEnvironment,
   updateEnvironment,
   deleteEnvironment,
@@ -95,6 +102,7 @@ beforeEach(() => {
   h.state.inserted = [];
   h.state.updated = [];
   h.state.deleted = 0;
+  h.state.batches = [];
 });
 
 describe("fetchEnvironments", () => {
@@ -120,16 +128,15 @@ describe("fetchEnvironments", () => {
 
 describe("ensureDefaultEnvironment", () => {
   it("creates a default environment for an account that has none", async () => {
-    // First read finds nothing, the insert returns the new row.
+    // First read finds nothing; the re-read after the insert finds the row.
     h.state.queueByTable.set(environments, [[], [makeEnvironment()]]);
 
     const result = await ensureDefaultEnvironment(USER_ID);
 
-    expect(h.state.inserted[0]).toMatchObject({
-      user_id: USER_ID,
-      name: "My Home",
-    });
-    expect(result.data).toHaveLength(1);
+    // One batch: the per-user lock, then the guarded insert.
+    expect(h.state.batches).toHaveLength(1);
+    expect(h.state.batches[0]).toHaveLength(2);
+    expect(result.data).toEqual([makeEnvironment()]);
   });
 
   it("creates nothing when the user already has one", async () => {
@@ -139,24 +146,6 @@ describe("ensureDefaultEnvironment", () => {
 
     expect(h.state.inserted).toHaveLength(0);
     expect(result.data).toHaveLength(1);
-  });
-});
-
-describe("assertOwnedEnvironment", () => {
-  it("passes for an environment the user owns", async () => {
-    h.state.resultsByTable.set(environments, [{ id: ENV_ID }]);
-
-    const result = await assertOwnedEnvironment(USER_ID, ENV_ID);
-
-    expect(result.error).toBeNull();
-  });
-
-  it("rejects an environment that is not the user's", async () => {
-    h.state.resultsByTable.set(environments, []);
-
-    const result = await assertOwnedEnvironment(USER_ID, "someone-elses");
-
-    expect(result.error?.message).toBe("Environment not found");
   });
 });
 

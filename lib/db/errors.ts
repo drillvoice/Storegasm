@@ -17,16 +17,39 @@
 const UNDEFINED_TABLE = "42P01";
 const UNDEFINED_COLUMN = "42703";
 
+/** SQLSTATE for a foreign key violation. */
+const FOREIGN_KEY_VIOLATION = "23503";
+
+/**
+ * What each foreign key in lib/db/schema.ts means when a write breaks it.
+ *
+ * The composite keys are the environment rules themselves — the data layer
+ * relies on them instead of checking first — so a violation is an ordinary
+ * refusal ("that parent is in another environment") and deserves a sentence,
+ * not the constraint name.
+ */
+const FOREIGN_KEY_MESSAGES: Record<string, string> = {
+  spaces_environment_owner_fk: "Environment not found",
+  items_environment_owner_fk: "Environment not found",
+  spaces_parent_same_environment_fk:
+    "Parent space is not in that environment",
+  items_space_same_environment_fk: "Space is not in that environment",
+  items_space_id_spaces_id_fk: "Space not found",
+};
+
 const SCHEMA_BEHIND_HINT =
   "The database is missing tables or columns this version of the app needs — " +
   "its migrations have not been applied. Run `npm run db:migrate` against it " +
   "(see SETUP.md, step 4).";
 
-/** Errors carry the SQLSTATE on `code`, but it is not part of the Error type. */
-function errorCode(e: unknown): string | undefined {
+/**
+ * Reads a string field the driver adds to its errors (`code` for the SQLSTATE,
+ * `constraint` for the violated constraint) that isn't part of the Error type.
+ */
+function errorField(e: unknown, field: "code" | "constraint"): string | undefined {
   if (typeof e !== "object" || e === null) return undefined;
-  const code = (e as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
+  const value = (e as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : undefined;
 }
 
 /**
@@ -64,7 +87,12 @@ export function describeDbError(e: unknown): string {
         ? cause
         : String((cause as { message?: unknown })?.message ?? cause);
 
-  const code = errorCode(cause) ?? errorCode(e);
+  const code = errorField(cause, "code") ?? errorField(e, "code");
+  if (code === FOREIGN_KEY_VIOLATION) {
+    const constraint = errorField(cause, "constraint") ?? "";
+    const known = FOREIGN_KEY_MESSAGES[constraint];
+    if (known) return known;
+  }
   if (code === UNDEFINED_TABLE || code === UNDEFINED_COLUMN) {
     return `${SCHEMA_BEHIND_HINT} (${message})`;
   }

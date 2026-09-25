@@ -1,0 +1,70 @@
+# Runs on every pull request and every push to main. Vercel's preview build
+# only proves the app compiles; this proves it works.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - name: Migrations match the schema
+        # A schema.ts change without its migration would deploy code that
+        # expects columns or constraints the database never gets.
+        run: |
+          npx drizzle-kit generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            echo "::error::lib/db/schema.ts has changes with no migration. Run 'npx drizzle-kit generate' and commit the result."
+            git status --porcelain drizzle
+            exit 1
+          fi
+      # No DATABASE_URL here, so the build's migrate step skips itself.
+      - run: npm run build
+
+  integration:
+    name: Migrations and data layer on Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: storegasm
+          POSTGRES_PASSWORD: storegasm
+          POSTGRES_DB: storegasm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U storegasm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://storegasm:storegasm@localhost:5432/storegasm
+      TEST_DATABASE_URL: postgres://storegasm:storegasm@localhost:5432/storegasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The same step production runs on deploy, from an empty database.
+      - run: npm run db:migrate
+      - run: npm run test:integration

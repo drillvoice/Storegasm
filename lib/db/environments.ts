@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { describeDbError, toDbError } from "@/lib/db/errors";
+import { toDbError } from "@/lib/db/errors";
 import { environments, items, spaces } from "@/lib/db/schema";
 import type {
   Environment,
@@ -54,6 +54,12 @@ export async function fetchEnvironments(
  * sign-up, the first read creates it. Idempotent — it only inserts when the
  * user genuinely has zero environments.
  *
+ * Two first reads can race (a new account opened in two tabs), and a plain
+ * "insert if none exist" lets both see none and both insert. So the insert
+ * runs in a batch — which neon-http executes as one transaction — behind a
+ * per-user advisory lock: the second waits for the first to commit, and its
+ * NOT EXISTS, evaluated only once it holds the lock, sees the first's row.
+ *
  * @param userId - The authenticated user's ID.
  * @returns The user's Environments, guaranteed non-empty.
  */
@@ -64,42 +70,23 @@ export async function ensureDefaultEnvironment(
   if (existing.error) return existing;
   if (existing.data.length > 0) return existing;
 
-  const created = await createEnvironment(userId, { name: "My Home" });
-  if (created.error) return { data: null, error: created.error };
-  return { data: [created.data], error: null };
-}
-
-/**
- * Verifies an environment exists and belongs to the user.
- *
- * Unlike userId, the environment id IS supplied by the client (it is the
- * user's current scope selection), so every action that accepts one calls
- * this first.
- *
- * @param userId - The authenticated user's ID.
- * @param environmentId - The environment UUID to check.
- * @returns An error result when the environment is not the user's.
- */
-export async function assertOwnedEnvironment(
-  userId: string,
-  environmentId: string
-): Promise<{ error: { message: string } | null }> {
   try {
-    const rows = await db
-      .select({ id: environments.id })
-      .from(environments)
-      .where(
-        and(
-          eq(environments.id, environmentId),
-          eq(environments.user_id, userId)
+    await db.batch([
+      db.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`default-environment:${userId}`}, 0))`
+      ),
+      db.execute(sql`
+        INSERT INTO ${environments} (user_id, name)
+        SELECT ${userId}, 'My Home'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ${environments} WHERE ${environments.user_id} = ${userId}
         )
-      )
-      .limit(1);
-    if (!rows[0]) return { error: { message: "Environment not found" } };
-    return { error: null };
+      `),
+    ]);
   } catch (e) {
-    return { error: { message: describeDbError(e) } };
+    return toDbError(e);
   }
+  return fetchEnvironments(userId);
 }
 
 /**

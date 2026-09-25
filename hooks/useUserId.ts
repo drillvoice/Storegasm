@@ -1,24 +1,33 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { authClient } from "@/lib/auth-client";
+import { createContext, createElement, useContext } from "react";
+
+const UserIdContext = createContext<string | null>(null);
 
 /**
- * Resolves the authenticated user's ID once and caches it for the session.
+ * Supplies the signed-in user's id to the client.
  *
- * Every data query depends on this, so it is cached indefinitely (the user
- * cannot change without a full reload) and shared across all hooks via the
- * QueryClient.
+ * The (app) layout already validates the session on the server before it
+ * renders anything, so it passes the id down rather than making the browser
+ * ask /api/auth/get-session for it again — a round trip every data query used
+ * to wait behind.
+ */
+export function UserIdProvider({
+  userId,
+  children,
+}: {
+  userId: string;
+  children: React.ReactNode;
+}) {
+  return createElement(UserIdContext.Provider, { value: userId }, children);
+}
+
+/**
+ * The signed-in user's id. Every data query keys its cache on it, so one
+ * account's cached data is never shown to another.
+ *
+ * @returns The user id, or null outside the authenticated app shell.
  */
 export function useUserId(): string | null {
-  const { data } = useQuery({
-    queryKey: ["auth", "user"],
-    queryFn: async () => {
-      const { data: session } = await authClient.getSession();
-      return session?.user.id ?? null;
-    },
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-  return data ?? null;
+  return useContext(UserIdContext);
 }

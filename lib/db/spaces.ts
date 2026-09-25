@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { toDbError } from "@/lib/db/errors";
-import { items, spaces } from "@/lib/db/schema";
+import { spaces } from "@/lib/db/schema";
 import type {
   Space,
   SpaceNode,
@@ -71,6 +71,25 @@ export async function fetchSpaceTree(
     }
   }
 
+  // A parent loop (A inside B inside A) has no root, so the walk from the
+  // roots never reaches it and those spaces would silently vanish — or, if
+  // surfaced naively, send every recursive renderer round the loop forever.
+  // updateSpace refuses to create one, but any that exist are broken here:
+  // each unreached space is cut from its parent and shown at the top level.
+  const reached = new Set<string>();
+  const mark = (node: SpaceNode) => {
+    reached.add(node.id);
+    node.children.forEach(mark);
+  };
+  roots.forEach(mark);
+  for (const node of map.values()) {
+    if (reached.has(node.id)) continue;
+    const parent = map.get(node.parent_id!)!;
+    parent.children = parent.children.filter((c) => c !== node);
+    roots.push(node);
+    mark(node);
+  }
+
   return { data: roots, error: null };
 }
 
@@ -104,6 +123,11 @@ export async function fetchSpace(
 /**
  * Creates a new space in an environment.
  *
+ * Ownership isn't checked first: the (environment_id, user_id) and
+ * (parent_id, environment_id) foreign keys refuse an environment the user
+ * doesn't own or a parent outside it, and lib/db/errors.ts turns either
+ * refusal into a sentence.
+ *
  * @param userId - The authenticated user's ID.
  * @param environmentId - The environment the space belongs to.
  * @param payload - The space fields to create.
@@ -115,19 +139,6 @@ export async function createSpace(
   payload: CreateSpacePayload
 ): Promise<DbResult<Space>> {
   try {
-    if (payload.parent_id) {
-      const ok = await parentIsInEnvironment(
-        userId,
-        payload.parent_id,
-        environmentId
-      );
-      if (!ok) {
-        return {
-          data: null,
-          error: { message: "Parent space is in a different environment" },
-        };
-      }
-    }
     const rows = await db
       .insert(spaces)
       .values({ ...payload, user_id: userId, environment_id: environmentId })
@@ -142,8 +153,11 @@ export async function createSpace(
  * Updates an existing space owned by the user.
  *
  * Re-parenting within an environment is allowed; pointing a space at a parent
- * in a different environment is not — that is what moveSpaceToEnvironment is
- * for, since it has to carry the whole subtree across.
+ * in a different environment is not (the parent foreign key refuses it) —
+ * that is what moveSpaceToEnvironment is for. Nor is pointing it at itself or
+ * anything inside it, which no key can express: the parent form hides those
+ * choices, but two tabs working from stale trees can each make a move that
+ * looks fine alone and closes a loop together.
  *
  * @param userId - The authenticated user's ID.
  * @param spaceId - The UUID of the space to update.
@@ -157,22 +171,8 @@ export async function updateSpace(
 ): Promise<DbResult<Space>> {
   try {
     if (payload.parent_id) {
-      const current = await fetchSpace(userId, spaceId);
-      if (current.error) return { data: null, error: current.error };
-      if (!current.data) {
-        return { data: null, error: { message: "Space not found" } };
-      }
-      const ok = await parentIsInEnvironment(
-        userId,
-        payload.parent_id,
-        current.data.environment_id
-      );
-      if (!ok) {
-        return {
-          data: null,
-          error: { message: "Parent space is in a different environment" },
-        };
-      }
+      const loop = await wouldLoop(userId, spaceId, payload.parent_id);
+      if (loop) return { data: null, error: { message: loop } };
     }
 
     const rows = await db
@@ -193,12 +193,12 @@ export async function updateSpace(
  * Moves a space, its whole subtree, and every item inside it into another
  * environment — the "this box comes with me to the new house" operation.
  *
- * Done as one statement rather than a transaction: lib/db/client.ts uses the
- * stateless neon-http driver, which has no interactive transactions, but a
- * single statement is atomic on its own. Note that the re-parent and the
- * environment rewrite share one UPDATE on spaces (via the CASE): two
- * data-modifying CTEs touching the same row in one statement would silently
- * drop the second write.
+ * Only the root row is written. The parent and item foreign keys cascade on
+ * update, so Postgres rewrites environment_id down the subtree and onto every
+ * item inside it within the same statement — atomic without a transaction
+ * (lib/db/client.ts uses the stateless neon-http driver, which has none). The
+ * same keys refuse a destination parent outside the target environment and a
+ * target environment the user doesn't own.
  *
  * @param userId - The authenticated user's ID.
  * @param spaceId - The root of the subtree to move.
@@ -212,59 +212,19 @@ export async function moveSpaceToEnvironment(
   parentId: string | null
 ): Promise<DbResult<null>> {
   try {
-    const space = await fetchSpace(userId, spaceId);
-    if (space.error) return { data: null, error: space.error };
-    if (!space.data) {
+    if (parentId) {
+      const loop = await wouldLoop(userId, spaceId, parentId);
+      if (loop) return { data: null, error: { message: loop } };
+    }
+
+    const rows = await db
+      .update(spaces)
+      .set({ environment_id: environmentId, parent_id: parentId })
+      .where(and(eq(spaces.id, spaceId), eq(spaces.user_id, userId)))
+      .returning({ id: spaces.id });
+    if (!rows[0]) {
       return { data: null, error: { message: "Space not found" } };
     }
-
-    if (parentId) {
-      if (parentId === spaceId) {
-        return {
-          data: null,
-          error: { message: "A space cannot be moved into itself" },
-        };
-      }
-      const parent = await fetchSpace(userId, parentId);
-      if (parent.error) return { data: null, error: parent.error };
-      if (!parent.data || parent.data.environment_id !== environmentId) {
-        return {
-          data: null,
-          error: { message: "Destination space is not in that environment" },
-        };
-      }
-      const inSubtree = await isDescendantOf(userId, parentId, spaceId);
-      if (inSubtree) {
-        return {
-          data: null,
-          error: { message: "A space cannot be moved into its own contents" },
-        };
-      }
-    }
-
-    await db.execute(sql`
-      WITH RECURSIVE subtree AS (
-        SELECT ${spaces.id} FROM ${spaces}
-        WHERE ${spaces.id} = ${spaceId} AND ${spaces.user_id} = ${userId}
-        UNION ALL
-        SELECT s.id FROM ${spaces} s JOIN subtree st ON s.parent_id = st.id
-      ),
-      moved_spaces AS (
-        UPDATE ${spaces} SET
-          environment_id = ${environmentId},
-          parent_id = CASE
-            WHEN ${spaces.id} = ${spaceId} THEN ${parentId}::uuid
-            ELSE ${spaces.parent_id}
-          END
-        WHERE ${spaces.id} IN (SELECT id FROM subtree)
-          AND ${spaces.user_id} = ${userId}
-        RETURNING ${spaces.id}
-      )
-      UPDATE ${items} SET environment_id = ${environmentId}
-      WHERE ${items.space_id} IN (SELECT id FROM subtree)
-        AND ${items.user_id} = ${userId}
-    `);
-
     return { data: null, error: null };
   } catch (e) {
     return toDbError(e);
@@ -294,61 +254,24 @@ export async function deleteSpace(
   }
 }
 
-/**
- * Fetches the immediate children of a space within one environment.
- *
- * @param userId - The authenticated user's ID.
- * @param environmentId - The environment to scope to.
- * @param parentId - The parent space UUID, or null to get root spaces.
- * @returns An array of child Space records.
- */
-export async function fetchChildSpaces(
-  userId: string,
-  environmentId: string,
-  parentId: string | null
-): Promise<DbResult<Space[]>> {
-  try {
-    const data = await db
-      .select(spaceColumns)
-      .from(spaces)
-      .where(
-        and(
-          eq(spaces.user_id, userId),
-          eq(spaces.environment_id, environmentId),
-          parentId === null
-            ? isNull(spaces.parent_id)
-            : eq(spaces.parent_id, parentId)
-        )
-      )
-      .orderBy(asc(spaces.name));
-    return { data, error: null };
-  } catch (e) {
-    return toDbError(e);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** True when the candidate parent exists, is the user's, and is in `environmentId`. */
-async function parentIsInEnvironment(
+/**
+ * Says why making `parentId` the parent of `spaceId` would close a loop, or
+ * returns null when it wouldn't.
+ */
+async function wouldLoop(
   userId: string,
-  parentId: string,
-  environmentId: string
-): Promise<boolean> {
-  const rows = await db
-    .select({ id: spaces.id })
-    .from(spaces)
-    .where(
-      and(
-        eq(spaces.id, parentId),
-        eq(spaces.user_id, userId),
-        eq(spaces.environment_id, environmentId)
-      )
-    )
-    .limit(1);
-  return !!rows[0];
+  spaceId: string,
+  parentId: string
+): Promise<string | null> {
+  if (parentId === spaceId) return "A space cannot be its own parent";
+  if (await isDescendantOf(userId, parentId, spaceId)) {
+    return "A space cannot be moved into its own contents";
+  }
+  return null;
 }
 
 /** True when `candidateId` sits anywhere inside `ancestorId`'s subtree. */
